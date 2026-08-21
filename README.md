@@ -42,7 +42,7 @@ flowchart TD
     Fix --> Review
     Decision -- "Yes" --> Gate["4. New blind gate<br/>late-bound holdout probes"]
     Gate -- "New Failed" --> Fix
-    Gate -- "Pass" --> Archive["5. Archive the run<br/>loop-dashboard"]
+    Gate -- "Pass" --> Archive["5. Archive the run"]
 ```
 
 `veriloop` also works on its own. If there is no confirmed specification, it routes to `draft-spec` first instead of approving spec-less work by guesswork.
@@ -54,7 +54,6 @@ flowchart TD
 | 0. Configure role models *(optional)* | `$initialize-review-loop` | `/init` | Strict blind mode, model routing, and findings ledger |
 | 1. Confirm the work specification | `$draft-spec` | `/draft` | A repository-grounded spec with executable acceptance checks |
 | 2. Develop, review, and repair | `$run-review-loop <goal>` | `/work <goal>` | Verified changes and a final verdict |
-| 3. Inspect the completed run | `$loop-dashboard` or a natural-language request | Natural-language request | An offline HTML dashboard |
 
 ### 0. Initialize the loop *(optional)*
 
@@ -129,7 +128,7 @@ The loop succeeds only when all of these conditions hold:
 
 The loop is capped at three iterations. If failures stop decreasing or recur, it escalates the decision to you. Warnings do not keep the loop running; each remaining warning is explicitly accepted, filed as follow-up work, or fixed now.
 
-Completed runs are archived under `.agent-review/runs/`. `loop-dashboard` turns them into a self-contained HTML report showing retry causes, Failed/Warning trends, resolved findings, and goal verification—without an external CDN.
+Completed runs are archived under `.agent-review/runs/`.
 
 ## Use only the piece you need
 
@@ -150,12 +149,6 @@ $apply-review-findings
 ```
 
 The skill re-verifies each `Failed` item against the actual code, repairs it, and reports resolved findings as `Pass`.
-
-### Open a dashboard for previous runs
-
-```text
-$loop-dashboard
-```
 
 ## The five review passes
 
@@ -234,8 +227,7 @@ skills/
 ├── draft-spec/                   # Repository analysis → draft → confirmation
 ├── run-review-loop/              # Develop → review → repair → final gate
 ├── veriloop/                     # Independent five-pass blind review
-├── apply-review-findings/        # Repair verified findings
-└── loop-dashboard/               # Render run history as offline HTML
+└── apply-review-findings/        # Repair verified findings
 schemas/                           # Review, gate, and archived-run contracts
 evals/                             # Executable controller traces and guard mutations
 ```

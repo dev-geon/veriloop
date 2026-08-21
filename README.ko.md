@@ -43,7 +43,7 @@ flowchart TD
     Fix --> Review
     Decision -- "예" --> Gate["4. 신규 블라인드 게이트<br/>후기 생성 holdout probe"]
     Gate -- "새 Failed 발견" --> Fix
-    Gate -- "통과" --> Archive["5. 실행 기록 보관<br/>loop-dashboard"]
+    Gate -- "통과" --> Archive["5. 실행 기록 보관"]
 ```
 
 `veriloop`는 단독으로도 사용할 수 있습니다. 확인된 명세가 없으면 먼저 `draft-spec`으로 연결되며, 명세 없는 변경을 추측으로 승인하지 않습니다.
@@ -55,7 +55,6 @@ flowchart TD
 | 0. 역할별 모델 설정 *(선택)* | `$initialize-review-loop` | `/init` | 엄격 블라인드 모드, 모델 설정, findings ledger |
 | 1. 작업 명세 확정 | `$draft-spec` | `/draft` | 저장소 규칙과 실행 가능한 인수 조건이 포함된 명세 |
 | 2. 구현·리뷰·수정 실행 | `$run-review-loop <목표>` | `/work <목표>` | 검증된 변경과 최종 판정 |
-| 3. 실행 결과 확인 | `$loop-dashboard` 또는 자연어 요청 | 자연어 요청 | 오프라인 HTML 대시보드 |
 
 ### 0. 루프 초기화 *(선택)*
 
@@ -128,7 +127,7 @@ property/metamorphic·차등 동작, 테스트 강도와 같은 후기 생성 pr
 
 안전장치로 최대 3회까지만 반복하며, 실패 항목이 줄지 않거나 되살아나는 경우 사용자에게 판단을 요청합니다. `Warning`만 남은 경우에는 루프를 계속 돌리지 않고 각각 수용·이슈 등록·즉시 정리 중 하나로 처리합니다.
 
-완료된 실행은 `.agent-review/runs/`에 보관됩니다. `loop-dashboard`는 반복별 실패 원인, Failed/Warning 추이, 해결된 항목, 목표 검증 결과를 외부 CDN 없는 단일 HTML로 보여줍니다.
+완료된 실행은 `.agent-review/runs/`에 보관됩니다.
 
 ## 필요한 기능만 사용하기
 
@@ -149,12 +148,6 @@ $apply-review-findings
 ```
 
 `Failed` 항목을 실제 코드에서 다시 확인한 뒤 수정하고, 해결된 항목은 `Pass`로 보고합니다.
-
-### 이전 실행을 대시보드로 보기
-
-```text
-$loop-dashboard
-```
 
 ## 리뷰가 확인하는 다섯 관점
 
@@ -233,8 +226,7 @@ skills/
 ├── draft-spec/                   # 저장소 분석 → 명세 초안 → 사용자 확인
 ├── run-review-loop/              # 구현 → 리뷰 → 수정 → 최종 게이트
 ├── veriloop/                     # 다섯 관점의 독립 블라인드 리뷰
-├── apply-review-findings/        # 검증된 지적사항 수정
-└── loop-dashboard/               # 실행 기록 HTML 시각화
+└── apply-review-findings/        # 검증된 지적사항 수정
 schemas/                           # 리뷰·게이트·실행 기록 계약
 evals/                             # 실행 가능한 controller trace와 적대적 변형
 ```

@@ -338,5 +338,4 @@ Report:
   clean up now.
 
 Record accepted warnings in the ledger. Do not create issues or apply warning-only
-cleanup without the user's authorization. Offer the bundled loop-dashboard skill
-after the text report; the text report remains the source of truth.
+cleanup without the user's authorization. The text report remains the source of truth.
