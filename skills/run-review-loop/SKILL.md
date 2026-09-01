@@ -337,5 +337,8 @@ Report:
 - every remaining warning and its required disposition: accept, file an issue, or
   clean up now.
 
+Persist the final report as `REVIEW.md` in the same directory as the confirmed
+specification (`SPEC.md`), so the outcome lives beside the spec it verified.
+
 Record accepted warnings in the ledger. Do not create issues or apply warning-only
 cleanup without the user's authorization. The text report remains the source of truth.

@@ -19,8 +19,9 @@ nothing else.
 
 ## Step 1 — Load the findings
 
-Locate the review report (the user points at it, or it is the output of a review that
-just ran in this conversation). Prefer the machine-readable JSON block at the end of an
+Locate the review report (the user points at it, it is the output of a review that
+just ran in this conversation, or — by convention — the `REVIEW.md` file beside the
+work's `SPEC.md`). Prefer the machine-readable JSON block at the end of an
 `veriloop` report; fall back to parsing the prose findings. For each finding
 capture: severity, title, file/line, the evidence (the caller that breaks, the query
 that fans out), and the suggested fix.
@@ -92,3 +93,6 @@ verified is reported as **Pass**:
 
 Then list files changed, and anything you deliberately did not touch (nits, unrelated
 observations). Write in the language the user is conversing in.
+
+When the findings came from a persisted `REVIEW.md`, update that file's finding
+statuses to match this table so the persisted report reflects the repaired state.

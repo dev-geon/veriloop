@@ -117,7 +117,10 @@ fixer verifies hardest there. Name one area; a risk focus that lists everything 
 nothing.
 
 Save the draft where this repository keeps documents (an existing docs directory, or
-propose a sensible path and let the user decide). Check the chosen path is actually
+propose a sensible path and let the user decide). Name the file `SPEC.md`, inside a
+directory dedicated to this piece of work — the directory carries the work's identity
+(repository or local guidance may pin the exact layout); the filename stays constant
+so tooling and later reviews can always find the spec. Check the chosen path is actually
 tracked by git — some repos gitignore their docs directories, and a spec teammates
 cannot see is not a team contract; if it is ignored, say so and agree on a tracked
 location with the user.

@@ -188,7 +188,7 @@ No configuration is required. The plugin discovers the repository's conventions 
 |---|---|
 | `.agent-review/config.json` | Per-role model routing |
 | `.agent-review/ledger.json` | Finding state across iterations: open, Pass, recurred, accepted |
-| `.agent-review/runs/` | Archived runs used by the dashboard |
+| `.agent-review/runs/` | Archived run records |
 
 ### Automation reliability
 

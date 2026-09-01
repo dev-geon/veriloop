@@ -187,7 +187,7 @@ codex plugin add veriloop@veriloop
 |---|---|
 | `.agent-review/config.json` | 루프 역할별 모델 설정 |
 | `.agent-review/ledger.json` | 반복을 가로지르는 finding 상태: open, Pass, recurred, accepted |
-| `.agent-review/runs/` | 완료된 실행 기록과 대시보드 입력 |
+| `.agent-review/runs/` | 완료된 실행 기록 |
 
 ### 자동화 신뢰성
 
