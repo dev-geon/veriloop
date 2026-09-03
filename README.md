@@ -32,7 +32,7 @@ It checks agent-written changes from five perspectives, then repeats for up to t
 ```mermaid
 flowchart TD
     Init["Initialize (optional)<br/>initialize-review-loop · /init"] --> State["Strict blind mode + model routing<br/>.agent-review/config.json"]
-    Draft["Confirm specification<br/>draft-spec · /draft"] --> Spec["Confirmed specification<br/>Executable acceptance checks"]
+    Draft["Confirm specification<br/>draft-spec · /draft"] --> Spec["Confirmed specification · IA.md<br/>Executable acceptance checks"]
     State --> Run["Run the loop<br/>run-review-loop · /work"]
     Spec --> Run
     Run --> Develop["1. Develop"]
@@ -43,6 +43,7 @@ flowchart TD
     Decision -- "Yes" --> Gate["4. New blind gate<br/>late-bound holdout probes"]
     Gate -- "New Failed" --> Fix
     Gate -- "Pass" --> Archive["5. Archive the run"]
+    Archive --> Docs["Documents beside the spec<br/>REVIEW.md · PRD.md"]
 ```
 
 `veriloop` also works on its own. If there is no confirmed specification, it routes to `draft-spec` first instead of approving spec-less work by guesswork.
@@ -52,8 +53,8 @@ flowchart TD
 | Step | Codex | Claude Code | Output |
 |---|---|---|---|
 | 0. Configure role models *(optional)* | `$initialize-review-loop` | `/init` | Strict blind mode, model routing, and findings ledger |
-| 1. Confirm the work specification | `$draft-spec` | `/draft` | A repository-grounded spec with executable acceptance checks |
-| 2. Develop, review, and repair | `$run-review-loop <goal>` | `/work <goal>` | Verified changes and a final verdict |
+| 1. Confirm the work specification | `$draft-spec` | `/draft` | `IA.md` — a repository-grounded spec with executable acceptance checks |
+| 2. Develop, review, and repair | `$run-review-loop <goal>` | `/work <goal>` | Verified changes, a final verdict in `REVIEW.md`, and `PRD.md` on success |
 
 ### 0. Initialize the loop *(optional)*
 
@@ -130,6 +131,18 @@ The loop is capped at three iterations. If failures stop decreasing or recur, it
 
 Completed runs are archived under `.agent-review/runs/`.
 
+### Documents the loop leaves behind
+
+Three files sit together in the work's own directory, beside the confirmed specification:
+
+| File | Contents | Written by |
+|---|---|---|
+| `IA.md` | The specification: requirements and executable acceptance criteria | `draft-spec` |
+| `REVIEW.md` | Findings with severity and `file:line` evidence, the verdict, and the machine-readable JSON block | any review, standalone or inside the loop |
+| `PRD.md` | The delivery record: every acceptance criterion with its Pass/Fail and evidence, a summary of what changed, and what remains | `run-review-loop`, only on a `goal_met` exit |
+
+`REVIEW.md` says what the review found; `PRD.md` says what the work delivered. A run that stops at the iteration cap, makes no progress, or loses a worker writes no delivery record, and the report says why.
+
 ## Use only the piece you need
 
 ### Review the current change
@@ -140,7 +153,7 @@ Ask naturally or invoke `$veriloop` directly:
 - “Check this diff before I commit.”
 - “Is this branch safe to merge?”
 
-Scope is resolved in this order: **a PR, commit range, or path you name → uncommitted changes → the current branch against the default branch's merge base**. Review mode does not modify code.
+Scope is resolved in this order: **a PR, commit range, or path you name → uncommitted changes → the current branch against the default branch's merge base**. Review mode does not modify code. The report is persisted as `REVIEW.md` beside the specification; a standalone review writes no delivery record.
 
 ### Apply an existing review report
 

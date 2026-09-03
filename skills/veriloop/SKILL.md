@@ -204,7 +204,7 @@ Rules for the report:
 - Suggest fixes but do not apply them unless the user asks. The deliverable of this
   skill is the review.
 - Persist the final report as `REVIEW.md` in the same directory as the confirmed
-  spec (`SPEC.md`), including the fenced machine-readable JSON block; overwrite it on
+  spec (`IA.md`), including the fenced machine-readable JSON block; overwrite it on
   a re-review of the same work. The conversation report remains the source of truth.
 
 ### Machine-readable result

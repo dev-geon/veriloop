@@ -21,7 +21,7 @@ nothing else.
 
 Locate the review report (the user points at it, it is the output of a review that
 just ran in this conversation, or — by convention — the `REVIEW.md` file beside the
-work's `SPEC.md`). Prefer the machine-readable JSON block at the end of an
+work's `IA.md`). Prefer the machine-readable JSON block at the end of an
 `veriloop` report; fall back to parsing the prose findings. For each finding
 capture: severity, title, file/line, the evidence (the caller that breaks, the query
 that fans out), and the suggested fix.

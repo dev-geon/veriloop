@@ -33,7 +33,7 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
 ```mermaid
 flowchart TD
     Init["초기화 (선택)<br/>initialize-review-loop · /init"] --> State["엄격 블라인드 모드 + 모델 설정<br/>.agent-review/config.json"]
-    Draft["명세 확정<br/>draft-spec · /draft"] --> Spec["확정된 명세<br/>실행 가능한 인수 조건"]
+    Draft["명세 확정<br/>draft-spec · /draft"] --> Spec["확정된 명세 · IA.md<br/>실행 가능한 인수 조건"]
     State --> Run["루프 실행<br/>run-review-loop · /work"]
     Spec --> Run
     Run --> Develop["1. 구현"]
@@ -44,6 +44,7 @@ flowchart TD
     Decision -- "예" --> Gate["4. 신규 블라인드 게이트<br/>후기 생성 holdout probe"]
     Gate -- "새 Failed 발견" --> Fix
     Gate -- "통과" --> Archive["5. 실행 기록 보관"]
+    Archive --> Docs["명세 옆에 남는 문서<br/>REVIEW.md · PRD.md"]
 ```
 
 `veriloop`는 단독으로도 사용할 수 있습니다. 확인된 명세가 없으면 먼저 `draft-spec`으로 연결되며, 명세 없는 변경을 추측으로 승인하지 않습니다.
@@ -53,8 +54,8 @@ flowchart TD
 | 단계 | Codex | Claude Code | 결과 |
 |---|---|---|---|
 | 0. 역할별 모델 설정 *(선택)* | `$initialize-review-loop` | `/init` | 엄격 블라인드 모드, 모델 설정, findings ledger |
-| 1. 작업 명세 확정 | `$draft-spec` | `/draft` | 저장소 규칙과 실행 가능한 인수 조건이 포함된 명세 |
-| 2. 구현·리뷰·수정 실행 | `$run-review-loop <목표>` | `/work <목표>` | 검증된 변경과 최종 판정 |
+| 1. 작업 명세 확정 | `$draft-spec` | `/draft` | `IA.md` — 저장소 규칙과 실행 가능한 인수 조건이 포함된 명세 |
+| 2. 구현·리뷰·수정 실행 | `$run-review-loop <목표>` | `/work <목표>` | 검증된 변경, `REVIEW.md`의 최종 판정, 성공 시 `PRD.md` |
 
 ### 0. 루프 초기화 *(선택)*
 
@@ -129,6 +130,18 @@ property/metamorphic·차등 동작, 테스트 강도와 같은 후기 생성 pr
 
 완료된 실행은 `.agent-review/runs/`에 보관됩니다.
 
+### 루프가 남기는 문서
+
+세 파일이 확정된 명세와 같은 폴더에 함께 놓입니다.
+
+| 파일 | 내용 | 작성 주체 |
+|---|---|---|
+| `IA.md` | 명세 — 요구사항과 실행 가능한 인수 조건 | `draft-spec` |
+| `REVIEW.md` | findings(severity·`file:line` 근거), 판정, 머신리더블 JSON 블록 | 단독 리뷰·루프 내부 리뷰 모두 |
+| `PRD.md` | 결과 문서 — 인수 조건별 Pass/Fail과 근거, 구현 요약, 잔여 항목 | `run-review-loop`, `goal_met` 종료에서만 |
+
+`REVIEW.md`는 리뷰가 무엇을 찾았는지를, `PRD.md`는 작업이 무엇을 완성했는지를 적습니다. 반복 상한·무진전·worker 중단으로 끝난 실행은 결과 문서를 남기지 않고, 그 이유를 리포트에 적습니다.
+
 ## 필요한 기능만 사용하기
 
 ### 현재 변경만 리뷰
@@ -139,7 +152,7 @@ property/metamorphic·차등 동작, 테스트 강도와 같은 후기 생성 pr
 - “커밋 전에 현재 diff를 확인해줘”
 - “이 브랜치를 병합해도 안전한지 검토해줘”
 
-리뷰 범위는 **사용자가 지정한 PR·커밋·경로 → 커밋하지 않은 변경 → 기본 브랜치와 현재 브랜치의 차이** 순으로 결정됩니다. 리뷰는 코드를 수정하지 않습니다.
+리뷰 범위는 **사용자가 지정한 PR·커밋·경로 → 커밋하지 않은 변경 → 기본 브랜치와 현재 브랜치의 차이** 순으로 결정됩니다. 리뷰는 코드를 수정하지 않습니다. 리포트는 명세 옆에 `REVIEW.md`로 저장되며, 단독 리뷰는 결과 문서를 남기지 않습니다.
 
 ### 기존 리뷰 지적사항만 반영
 

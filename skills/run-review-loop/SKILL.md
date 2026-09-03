@@ -338,7 +338,17 @@ Report:
   clean up now.
 
 Persist the final report as `REVIEW.md` in the same directory as the confirmed
-specification (`SPEC.md`), so the outcome lives beside the spec it verified.
+specification (`IA.md`), so the outcome lives beside the spec it verified.
+
+Also persist a delivery record as `PRD.md` in that same directory. It states what the
+work delivered, not what the review found: every acceptance criterion from `IA.md` with
+its Pass/Fail and the evidence that settled it, a short summary of what changed and
+where — the files and behaviour a reader needs to understand the delivered work — and
+what remains, meaning accepted warnings, deferred items, and follow-up work with its
+owner or ticket. Keep the findings themselves in `REVIEW.md` and reference that file
+rather than restating them. Write the delivery record only on a `goal_met` exit;
+on any other exit, say in the report that none was written and why. Overwrite it when
+the same work runs again.
 
 Record accepted warnings in the ledger. Do not create issues or apply warning-only
 cleanup without the user's authorization. The text report remains the source of truth.
