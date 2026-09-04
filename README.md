@@ -139,9 +139,34 @@ Three files sit together in the work's own directory, beside the confirmed speci
 |---|---|---|
 | `IA.md` | The specification: requirements and executable acceptance criteria | `draft-spec` |
 | `REVIEW.md` | Findings with severity and `file:line` evidence, the verdict, and the machine-readable JSON block | any review, standalone or inside the loop |
-| `PRD.md` | The delivery record: every acceptance criterion with its Pass/Fail and evidence, a summary of what changed, and what remains | `run-review-loop`, only on a `goal_met` exit |
+| `PRD.md` | The product document: what the thing is, who uses it, what it does, how it works, its non-functional properties, a verification chapter with every acceptance criterion's Pass/Fail and evidence, and what remains | `run-review-loop`, only on a `goal_met` exit |
 
-`REVIEW.md` says what the review found; `PRD.md` says what the work delivered. A run that stops at the iteration cap, makes no progress, or loses a worker writes no delivery record, and the report says why.
+`IA.md` is the contract, `REVIEW.md` is the audit, and `PRD.md` is the description of what now exists — written for someone who was not in the room. The acceptance-criteria table is one chapter of it, not the whole document. A run that stops at the iteration cap, makes no progress, or loses a worker writes no product document, and the report says why.
+
+When a program spans many pieces of work, the pair scales: a program-level `IA.md` and `PRD.md` describe the whole in the parent directory, while each piece keeps its own pair beside it.
+
+#### What goes in each document
+
+**`IA.md` — the contract.** Nine sections, in this order: purpose and background; scope, in and out explicitly; current behaviour, grounded in `file:line`; target behaviour; constraints, including what must not change; acceptance criteria, each paired with the exact check that verifies it; risks and edge cases; a risk focus naming the one area where the change fails worst; and references. A criterion with no runnable check is a taste judgment — sharpen it or move it out.
+
+**`REVIEW.md` — the audit.** Findings ordered worst first, each with severity (`Failed` blocks the change, `Warning` a human may accept), `file:line` evidence, and a concrete failure scenario. Then the verdict that follows from them, the passed checks that say which risks were actually ruled out, and the machine-readable JSON block that automation consumes. Three verified findings beat ten speculative ones.
+
+**`PRD.md` — the product document.** Ten chapters, in this order:
+
+| # | Chapter | What it answers |
+|---|---|---|
+| 1 | What it is | One paragraph, in the reader's language |
+| 2 | Who uses it | The roles, and what each comes to do |
+| 3 | What problem it solves | The situation before, and what changed |
+| 4 | What it does | The feature set, grouped as a user would group it |
+| 5 | How it is used | The main flow end to end, plus secondary flows |
+| 6 | How it works | The model or data flow needed to trust the behaviour, with its assumptions |
+| 7 | Non-functional properties | Determinism, honesty about missing data, accessibility, performance, permissions, language |
+| 8 | Verification | Every acceptance criterion's Pass/Fail with evidence — **one chapter, not the document** |
+| 9 | What remains | Accepted warnings, deferred items, known defects with their disposition, follow-ups with an owner |
+| 10 | Limits of this document | What it did not cover, and what its claims rest on |
+
+Chapters scale with the work — a bug fix earns a paragraph each, a program earns the whole document — but none is dropped to save space; say "not applicable" and why. Ground factual claims with `file:line`, mark inference as inference, and record an unresolved discrepancy as a discrepancy rather than dropping it.
 
 ## Use only the piece you need
 
