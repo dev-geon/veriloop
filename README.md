@@ -139,9 +139,11 @@ Three files sit together in the work's own directory, beside the confirmed speci
 |---|---|---|
 | `IA.md` | The specification: requirements and executable acceptance criteria | `draft-spec` |
 | `REVIEW.md` | Findings with severity and `file:line` evidence, the verdict, and the machine-readable JSON block | any review, standalone or inside the loop |
-| `PRD.md` | The delivery record: every acceptance criterion with its Pass/Fail and evidence, a summary of what changed, and what remains | `run-review-loop`, only on a `goal_met` exit |
+| `PRD.md` | The product document: what the thing is, who uses it, what it does, how it works, its non-functional properties, a verification chapter with every acceptance criterion's Pass/Fail and evidence, and what remains | `run-review-loop`, only on a `goal_met` exit |
 
-`REVIEW.md` says what the review found; `PRD.md` says what the work delivered. A run that stops at the iteration cap, makes no progress, or loses a worker writes no delivery record, and the report says why.
+`IA.md` is the contract, `REVIEW.md` is the audit, and `PRD.md` is the description of what now exists — written for someone who was not in the room. The acceptance-criteria table is one chapter of it, not the whole document. A run that stops at the iteration cap, makes no progress, or loses a worker writes no product document, and the report says why.
+
+When a program spans many pieces of work, the pair scales: a program-level `IA.md` and `PRD.md` describe the whole in the parent directory, while each piece keeps its own pair beside it.
 
 ## Use only the piece you need
 

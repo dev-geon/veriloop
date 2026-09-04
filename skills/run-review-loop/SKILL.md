@@ -340,15 +340,47 @@ Report:
 Persist the final report as `REVIEW.md` in the same directory as the confirmed
 specification (`IA.md`), so the outcome lives beside the spec it verified.
 
-Also persist a delivery record as `PRD.md` in that same directory. It states what the
-work delivered, not what the review found: every acceptance criterion from `IA.md` with
-its Pass/Fail and the evidence that settled it, a short summary of what changed and
-where — the files and behaviour a reader needs to understand the delivered work — and
-what remains, meaning accepted warnings, deferred items, and follow-up work with its
-owner or ticket. Keep the findings themselves in `REVIEW.md` and reference that file
-rather than restating them. Write the delivery record only on a `goal_met` exit;
-on any other exit, say in the report that none was written and why. Overwrite it when
-the same work runs again.
+Also persist a product document as `PRD.md` in that same directory. `IA.md` is the
+contract and `REVIEW.md` is the audit; `PRD.md` is **the description of what now
+exists** — written for someone who was not in the room, and who needs to understand the
+delivered product before they can judge a verification table.
+
+A checklist of acceptance criteria is not a product document. Write these, in this order:
+
+- **What it is** — the thing in one paragraph, in the reader's language, not the
+  implementation's.
+- **Who uses it and what they come to do** — the roles, and what each one wants out of it.
+- **What problem it solves** — the situation before, and what changed.
+- **What it does** — the feature set, grouped the way a user would group it, complete
+  enough that nothing shipped is missing from the list.
+- **How it is used** — the main flow end to end, plus the secondary flows that matter.
+- **How it works** — the model, algorithm, or data flow a reader must hold to trust the
+  numbers or the behaviour. State the assumptions and where they are approximations.
+- **Non-functional properties** — determinism, honesty about missing data, accessibility,
+  performance, permissions, language, whatever the work actually commits to.
+- **Verification** — every acceptance criterion from `IA.md` with its Pass/Fail and the
+  evidence that settled it, plus the commands or runs that produced that evidence. This
+  is **one chapter, not the document**.
+- **What remains** — accepted warnings, deferred items, known defects and inconsistencies
+  with their disposition, and follow-up work with its owner or ticket. Record a
+  discrepancy you could not resolve as a discrepancy; do not quietly drop it.
+- **Limits of this document** — what it did not cover and what its claims rest on.
+
+Scale the chapters to the work: a single bug fix earns a short paragraph per chapter and
+a full verification table; a program-sized deliverable earns the whole document. Never
+drop a chapter to save space — say "not applicable" and why.
+
+Ground every factual claim in the code with a `file:line`, and mark inference as
+inference. Keep the findings themselves in `REVIEW.md` and reference that file rather
+than restating them.
+
+Write the product document only on a `goal_met` exit; on any other exit, say in the
+report that none was written and why. Overwrite it when the same work runs again.
+
+When a program spans many pieces of work, the same pair scales: a program-level `IA.md`
+and `PRD.md` sit in the parent directory and describe the whole, while each piece keeps
+its own pair in its own directory. The program-level `PRD.md` is the one a stakeholder
+reads first.
 
 Record accepted warnings in the ledger. Do not create issues or apply warning-only
 cleanup without the user's authorization. The text report remains the source of truth.
