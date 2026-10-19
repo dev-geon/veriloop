@@ -3,16 +3,17 @@
   <a href="./README.ko.md"><img src="https://img.shields.io/badge/한국어-30363D?style=for-the-badge" alt="한국어로 읽기" /></a>
 </p>
 
+# Veriloop
+
+A **spec-grounded code review and repair loop** for Codex and Claude Code.
+
+It checks agent-written changes from five perspectives.<br>
+The loop repeats for up to three iterations until no failed finding remains and the goal's acceptance checks pass as executable commands.
+
 <p align="center">
   <a href="#install"><img src="https://img.shields.io/badge/▶_INSTALL-OPEN-111111?style=for-the-badge&labelColor=5B5B5B" alt="Install Veriloop" /></a>
   &nbsp;&nbsp;
   <a href="#recommended-workflow"><img src="https://img.shields.io/badge/▶_WORKFLOW-EXPLORE-8B5CF6?style=for-the-badge&labelColor=5B5B5B" alt="Explore the Veriloop workflow" /></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/dev-geon/veriloop/stargazers"><img src="https://img.shields.io/github/stars/dev-geon/veriloop?style=flat" alt="GitHub stars" /></a>
-  <a href="https://github.com/dev-geon/veriloop/releases/latest"><img src="https://img.shields.io/github/v/release/dev-geon/veriloop?style=flat" alt="Latest release" /></a>
-  <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
 <p align="center">
@@ -22,21 +23,28 @@
   <kbd>blind mode strict</kbd>
 </p>
 
-# Veriloop
-A **spec-grounded code review and repair loop** for Codex and Claude Code.
-
-It checks agent-written changes from five perspectives, then repeats for up to three iterations until no failed finding remains and the goal's acceptance checks pass as executable commands.
+<p align="center">
+  <a href="https://github.com/dev-geon/veriloop/stargazers"><img src="https://img.shields.io/github/stars/dev-geon/veriloop?style=flat" alt="GitHub stars" /></a>
+  <a href="https://github.com/dev-geon/veriloop/releases/latest"><img src="https://img.shields.io/github/v/release/dev-geon/veriloop?style=flat" alt="Latest release" /></a>
+  <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
+</p>
 
 ## Changes in 0.12.1
 
 This release reduces avoidable repair-loop work without weakening strict review or required verification.
 
-- Repair related findings as one bounded root-cause group. Reproduce failures where practical and verify normal behavior that must remain valid.
-- In loop mode, workers return structured results and the controller alone persists reports. Standalone review and repair keep their documented report behavior.
+- Repair related findings as one bounded root-cause group.<br>
+  Reproduce failures where practical and verify normal behavior that must remain valid.
+- In loop mode, workers return structured results and the controller alone persists reports.<br>
+  Standalone review and repair keep their documented report behavior.
 - Exclude review histories, product outcome documents and worker artifacts from blind reviewer/gate inputs, searches and diffs.
-- Run local checks during repair and full required acceptance on the final candidate, including required device checks before gate. Retain independent controller verification; repeat passed checks only for a recorded reason.
-- Keep prior archives and require a changed repair approach before a user-authorized follow-up run after no progress. The three-iteration cap remains unchanged.
-- Validate worker payloads before submission with the read-only helper below. It checks JSON/schema, semantic status, exact criteria, the 16 KiB limit and artifact references, sizes, hashes and containment. It does not execute acceptance checks or replace transport-status validation.
+- Run local checks during repair and full required acceptance on the final candidate, including required device checks before gate.<br>
+  Retain independent controller verification; repeat passed checks only for a recorded reason.
+- Keep prior archives and require a changed repair approach before a user-authorized follow-up run after no progress.<br>
+  The three-iteration cap remains unchanged.
+- Validate worker payloads before submission with the read-only helper below.<br>
+  It checks JSON/schema, semantic status, exact criteria, the 16 KiB limit and artifact references, sizes, hashes and containment.<br>
+  It does not execute acceptance checks or replace transport-status validation.
 
 From the plugin repository root (Python 3.10 or later, standard library only):
 
@@ -48,9 +56,12 @@ python3 evals/run_contract_evals.py
 python3 evals/test_worker_result_cli.py
 ```
 
-Run the helper before the original submission; the existing format-only retry stays tool-free. Run records and real acceptance evidence remain authoritative. Exact role models/efforts, fresh independent reviewers and gates, snapshot invalidation, and mandatory checks remain in force. Strict-only requests fail closed when isolation is unavailable.
+Run the helper before the original submission; the existing format-only retry stays tool-free.<br>
+Exact role models/efforts, fresh independent reviewers and gates, snapshot invalidation, and mandatory checks remain in force.<br>
+Strict-only requests fail closed when isolation is unavailable.
 
-These changes ship in the plugin source and versioned release, so updating to 0.12.1 or later does not depend on a local cache patch. They do not migrate existing run archives or imply a measured token-savings percentage.
+These changes ship in the plugin source and versioned release, so updating to 0.12.1 or later does not depend on a local cache patch.<br>
+They do not migrate existing run archives or imply a measured token-savings percentage.
 
 ## Skill architecture
 
@@ -71,7 +82,8 @@ flowchart TD
     Archive --> Docs["Documents beside the spec<br/>REVIEW.md · PRD.md"]
 ```
 
-`veriloop` also works on its own. If there is no confirmed specification, it routes to `draft-spec` first instead of approving spec-less work by guesswork.
+`veriloop` also works on its own.<br>
+If there is no confirmed specification, it routes to `draft-spec` first instead of approving spec-less work by guesswork.
 
 ## Recommended workflow
 
@@ -93,11 +105,13 @@ $initialize-review-loop
 /init
 ```
 
-The selection and `"blind_mode": "strict"` are stored in `.agent-review/config.json`. If a configured model is unavailable, the loop stops instead of silently substituting another one.
+The selection and `"blind_mode": "strict"` are stored in `.agent-review/config.json`.<br>
+If a configured model is unavailable, the loop stops instead of silently substituting another one.
 
 ### 1. Draft and confirm the specification
 
-`draft-spec` first inspects the repository's `AGENTS.md` / `CLAUDE.md`, relevant code, tests, and established patterns. It then writes a work specification in which every acceptance criterion is paired with a command that can actually verify it, such as a test or a grep assertion.
+`draft-spec` first inspects the repository's `AGENTS.md` / `CLAUDE.md`, relevant code, tests, and established patterns.<br>
+It then writes a work specification in which every acceptance criterion is paired with a command that can actually verify it, such as a test or a grep assertion.
 
 ```text
 # Codex
@@ -107,7 +121,8 @@ $draft-spec add a per-vehicle fuel total API
 /draft add a per-vehicle fuel total API
 ```
 
-Before you confirm the draft, an independent guess-hunt review looks for decisions that were assumed rather than grounded in the repository or your intent. The implementation loop does not start until you confirm the specification.
+Before you confirm the draft, an independent guess-hunt review looks for decisions that were assumed rather than grounded in the repository or your intent.<br>
+The implementation loop does not start until you confirm the specification.
 
 ### 2. Run the loop with an explicit goal
 
@@ -131,18 +146,16 @@ Each iteration follows the same sequence:
 
 ### Strict blind mode *(default)*
 
-Developers receive the specification and basic acceptance checks, but not review
-reports, the review checklist, gate plans, holdout probes, or reviewer reasoning.
-Every iteration reviewer and final gate is a new subagent. Each receives only the
-repository, frozen target, confirmed specification, scope bounds, and risk focus;
-the controller keeps the ledger and all prior history.
+Developers receive the specification and basic acceptance checks, but not review reports, the review checklist, gate plans, holdout probes, or reviewer reasoning.<br>
+Every iteration reviewer and final gate is a different, fresh subagent.<br>
+Each receives only the repository, frozen target, confirmed specification, scope bounds, and risk focus.<br>
+The controller keeps the ledger and all prior history.
 
-The final gate creates late-bound probes after the candidate is frozen: boundary and
-invalid inputs, state ordering, failure injection, property/metamorphic or
-differential behavior, and test-strength checks. It cannot modify the target
-worktree. If the host cannot provide a clean subagent context, the loop stops and
-asks whether you authorize reduced independence for that run only. Relaxed mode is
-never persisted or inferred from an earlier approval.
+The final gate creates new probes after the candidate is frozen: boundary and invalid inputs, state ordering, failure injection, property/metamorphic or differential behavior, and test-strength checks.<br>
+It cannot modify the target worktree.<br>
+If the host cannot provide an independent, fresh subagent context and the user or repository requires strict review, the loop stops with `blind_context_unavailable`.<br>
+Only when strict-only review is not required does it ask whether you authorize reduced independence for that run.<br>
+Relaxed mode is never persisted or inferred from an earlier approval.
 
 ### 3. Stop and inspect the result
 
@@ -152,7 +165,9 @@ The loop succeeds only when all of these conditions hold:
 - The review verdict is `Pass` or `Pass with warnings`.
 - The frozen snapshot is unchanged, every late-bound gate probe passes, and the gate finds no new `Failed` item.
 
-The loop is capped at three iterations. If failures stop decreasing or recur, it escalates the decision to you. Warnings do not keep the loop running; each remaining warning is explicitly accepted, filed as follow-up work, or fixed now.
+The loop is capped at three iterations.<br>
+If failures stop decreasing or recur, it escalates the decision to you.<br>
+Warnings do not keep the loop running; each remaining warning is explicitly accepted, filed as follow-up work, or fixed now.
 
 Completed runs are archived under `.agent-review/runs/`.
 
@@ -163,18 +178,39 @@ Three files sit together in the work's own directory, beside the confirmed speci
 | File | Contents | Written by |
 |---|---|---|
 | `IA.md` | The specification: requirements and executable acceptance criteria | `draft-spec` |
-| `REVIEW.md` | Findings with severity and `file:line` evidence, the verdict, and the machine-readable JSON block | any review, standalone or inside the loop |
+| `REVIEW.md` | Findings with severity and `file:line` evidence, the verdict, and the machine-readable JSON block | reviewer for standalone reviews; controller inside the loop |
 | `PRD.md` | The product document: what the thing is, who uses it, what it does, how it works, its non-functional properties, a verification chapter with every acceptance criterion's Pass/Fail and evidence, and what remains | `run-review-loop`, only on a `goal_met` exit |
 
-`IA.md` is the contract, `REVIEW.md` is the audit, and `PRD.md` is the description of what now exists — written for someone who was not in the room. The acceptance-criteria table is one chapter of it, not the whole document. A run that stops at the iteration cap, makes no progress, or loses a worker writes no product document, and the report says why.
+`IA.md` is the contract, `REVIEW.md` is the audit, and `PRD.md` is the description of what now exists — written for someone who was not in the room.<br>
+The acceptance-criteria table is one chapter of it, not the whole document.<br>
+A run that stops at the iteration cap, makes no progress, or loses a worker writes no product document, and the report says why.
 
 When a program spans many pieces of work, the pair scales: a program-level `IA.md` and `PRD.md` describe the whole in the parent directory, while each piece keeps its own pair beside it.
 
 #### What goes in each document
 
-**`IA.md` — the contract.** Nine sections, in this order: purpose and background; scope, in and out explicitly; current behaviour, grounded in `file:line`; target behaviour; constraints, including what must not change; acceptance criteria, each paired with the exact check that verifies it; risks and edge cases; a risk focus naming the one area where the change fails worst; and references. A criterion with no runnable check is a taste judgment — sharpen it or move it out.
+**`IA.md` — the contract.** Nine sections, in this order:
 
-**`REVIEW.md` — the audit.** Findings ordered worst first, each with severity (`Failed` blocks the change, `Warning` a human may accept), `file:line` evidence, and a concrete failure scenario. Then the verdict that follows from them, the passed checks that say which risks were actually ruled out, and the machine-readable JSON block that automation consumes. Three verified findings beat ten speculative ones.
+1. Purpose and background
+2. Scope — explicitly include and exclude work (In/Out)
+3. Current behavior — with `file:line` evidence
+4. Target behavior
+5. Constraints — including what must not change
+6. Acceptance criteria — each paired with the exact check that verifies it
+7. Risks and edge cases
+8. Risk focus — the one area where the change could fail most severely
+9. References
+
+Make criteria without runnable checks concrete, or remove them.
+
+**`REVIEW.md` — the audit.** Order findings by severity, with the most serious first.<br>
+Include the following for each finding:
+
+- Severity: `Failed` blocks the change; a human may accept a `Warning`.
+- Evidence: a `file:line` reference and a concrete failure scenario.
+
+Then record the verdict supported by those findings, the risks ruled out by passed checks, and the machine-readable JSON block.<br>
+Three verified findings are more useful than ten speculative ones.
 
 **`PRD.md` — the product document.** Ten chapters, in this order:
 
@@ -191,7 +227,8 @@ When a program spans many pieces of work, the pair scales: a program-level `IA.m
 | 9 | What remains | Accepted warnings, deferred items, known defects with their disposition, follow-ups with an owner |
 | 10 | Limits of this document | What it did not cover, and what its claims rest on |
 
-Chapters scale with the work — a bug fix earns a paragraph each, a program earns the whole document — but none is dropped to save space; say "not applicable" and why. Ground factual claims with `file:line`, mark inference as inference, and record an unresolved discrepancy as a discrepancy rather than dropping it.
+Chapters scale with the work — a bug fix earns a paragraph each, a program earns the whole document — but none is dropped to save space; say "not applicable" and why.<br>
+Ground factual claims with `file:line`, mark inference as inference, and record an unresolved discrepancy as a discrepancy rather than dropping it.
 
 ## Use only the piece you need
 
@@ -203,7 +240,8 @@ Ask naturally or invoke `$veriloop` directly:
 - “Check this diff before I commit.”
 - “Is this branch safe to merge?”
 
-Scope is resolved in this order: **a PR, commit range, or path you name → uncommitted changes → the current branch against the default branch's merge base**. Review mode does not modify code. The report is persisted as `REVIEW.md` beside the specification; a standalone review writes no delivery record.
+Scope is resolved in this order: **a PR, commit range, or path you name → uncommitted changes → the current branch against the default branch's merge base**. Review mode does not modify code.<br>
+The report is persisted as `REVIEW.md` beside the specification; a standalone review writes no delivery record.
 
 ### Apply an existing review report
 
@@ -223,7 +261,9 @@ The skill re-verifies each `Failed` item against the actual code, repairs it, an
 | **Readability** | Narration comments, excessive defensive wrapping, speculative generality, dead code |
 | **Conventions** | The current repository's rules, linters, and neighboring patterns—not generic best practice |
 
-Every finding is rechecked against the code and marked `Confirmed` or `Needs verification`. Results are classified as `Failed` or `Warning` and roll up to `Pass`, `Pass with warnings`, or `Fail`. Checks that found nothing—and findings that have been fixed—are reported explicitly as `Pass`.
+Every finding is rechecked against the code and marked `Confirmed` or `Needs verification`.<br>
+Results are classified as `Failed` or `Warning` and roll up to `Pass`, `Pass with warnings`, or `Fail`.<br>
+Checks that found nothing—and findings that have been fixed—are reported explicitly as `Pass`.
 
 ## Install
 
@@ -243,7 +283,8 @@ Start a new Codex task after installation so the bundled skills are discovered.
 /plugin install veriloop@veriloop
 ```
 
-No configuration is required. The plugin discovers the repository's conventions at review time.
+No configuration is required.<br>
+The plugin discovers the repository's conventions at review time.
 
 ## Run state and CI
 
@@ -266,9 +307,11 @@ No configuration is required. The plugin discovers the repository's conventions 
 python3 evals/run_contract_evals.py
 ```
 
-The suite covers three primary controller traces, one explicitly authorized reduced-mode transition, three worker termination transitions, 24 workflow mutations, seven valid worker envelopes, 21 worker-result mutations, and six raw-JSON fallback paths without API calls. It validates orchestration records and executable evidence; actual model-context isolation and subjective review quality still require a live forward test with fresh subagents.
+The suite covers three primary controller traces, one explicitly authorized reduced-mode transition, three worker termination transitions, 24 workflow mutations, seven valid worker envelopes, 21 worker-result mutations, and six raw-JSON fallback paths without API calls.<br>
+It validates orchestration records and executable evidence; actual model-context isolation and subjective review quality still require a live forward test with fresh subagents.
 
-Every review report ends with a machine-readable JSON block containing `verdict` and `findings[]`. See [docs/ci.md](docs/ci.md) for schema details, the local contract suite, a GitHub Actions gate, and a Claude Code Stop-hook recipe.
+Every review report ends with a machine-readable JSON block containing `verdict` and `findings[]`.<br>
+See [docs/ci.md](docs/ci.md) for schema details, the local contract suite, a GitHub Actions gate, and a Claude Code Stop-hook recipe.
 
 > **Claude Code only:** To enforce a review on sessions that do not invoke the loop, add a Stop hook in your own Claude Code settings. Hooks are user-owned harness configuration, so the plugin documents this setup instead of installing it.
 
