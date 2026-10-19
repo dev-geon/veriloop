@@ -17,6 +17,14 @@ You are the repair crew, not a second reviewer and not a refactoring engine: fix
 the review found, verify each fix against the finding's own evidence, and change
 nothing else.
 
+## Invocation mode
+
+Inside `run-review-loop`, consume only its issued repair packet and obey its role
+boundaries. Return one JSON object matching `../../schemas/worker-result.schema.json`,
+with a check for each exact Failed title; do not write REVIEW.md, ledger or run records.
+Do not inspect passed gate probes or expand a minimal gate failure packet. The table
+and report updates in Step 5 apply only to standalone invocations.
+
 ## Step 1 — Load the findings
 
 Locate the review report (the user points at it, it is the output of a review that
@@ -31,7 +39,7 @@ If there is no review report at all, say so and stop — running a review first 
 
 ## Step 2 — Decide what to fix
 
-- **Failed**: always fix, in the report's order (worst first).
+- **Failed**: always resolve; prioritize the highest-risk causal group first.
 - **Warning**: fix only when the user asked for it, or when the fix is a strict
   deletion (dead code, narration comments) that cannot change behavior. Everything
   else stays untouched. This is a convergence rule, not laziness: a loop that chases
@@ -49,12 +57,17 @@ If there is no review report at all, say so and stop — running a review first 
   touching it gets the strongest verification available — run the covering tests, not
   only the finding's own evidence.
 
-## Step 3 — Fix, one finding at a time
+## Step 3 — Repair the causal group
 
-For each finding, in severity order:
+Group findings that violate the same invariant. Trace directly affected callers and
+state transitions, including normal behavior that must be preserved. Keep unrelated
+refactoring out of scope. Minimal edits mean a coherent root-cause repair, not an
+isolated patch for each symptom. For each causal group:
 
 1. Read the full file (not just the cited line) and the finding's evidence.
-2. Make the **minimal** edit that resolves the evidence. Prefer the review's
+2. When practical, reproduce failure with a regression check before editing; repair
+   the cause and verify both that check and adjacent affected normal paths. Make the
+   smallest coherent edit that resolves the evidence. Prefer the review's
    `fix_hint`/suggested fix; deviate only when the hint is wrong for the code you see,
    and say so.
 3. Follow the repository's conventions — the review's convention findings tell you the
@@ -79,6 +92,8 @@ cheaply, and report the actual result — "compiles, 14/14 tests pass" or "no bu
 infrastructure available, verified by grep".
 
 ## Step 5 — Report
+
+In loop mode, return the worker JSON contract described above instead of this section.
 
 Output a status table that reuses the review's exact finding titles (the next review
 pass and the loop controller correlate by title). A finding whose fix is applied and

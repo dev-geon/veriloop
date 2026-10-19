@@ -192,6 +192,7 @@ def validate_worker_semantics(
     expected_role: str | None,
     label: str,
     host_termination: str | None = None,
+    staging_root: Path | None = None,
 ) -> None:
     validate_result("worker", result)
     encoded_size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
@@ -206,14 +207,21 @@ def validate_worker_semantics(
     artifacts = result["artifacts"]
     blocker = result["blocker"]
 
-    artifact_root = (ROOT / "evals/fixtures/artifacts").resolve()
+    artifact_root = (staging_root or (ROOT / "evals/fixtures/artifacts")).resolve()
     artifact_paths = [item["path"] for item in artifacts]
     require(len(artifact_paths) == len(set(artifact_paths)), f"{label}: artifact paths are duplicated")
+    resolved_artifacts = set()
     for index, artifact in enumerate(artifacts):
-        unresolved_path = ROOT / artifact["path"]
+        unresolved_path = (artifact_root if staging_root else ROOT) / artifact["path"]
         require(not unresolved_path.is_symlink(), f"{label}.artifacts[{index}]: artifact must not be a symlink")
-        path = resolve_repo_path(artifact["path"], f"{label}.artifacts[{index}]")
+        path = unresolved_path.resolve()
+        require(path.is_file(), f"{label}: artifact is not a file")
+        if staging_root:
+            require(not any(parent.is_symlink() for parent in unresolved_path.parents), f"{label}: symlinked artifact parent")
         require(artifact_root in path.parents, f"{label}.artifacts[{index}]: artifact is outside isolated storage")
+        require(path not in resolved_artifacts, f"{label}: artifact aliases are duplicated")
+        resolved_artifacts.add(path)
+        require(path.stat().st_size == artifact["bytes"], f"{label}: artifact size mismatch")
         payload = path.read_bytes()
         require(len(payload) == artifact["bytes"], f"{label}.artifacts[{index}]: artifact byte count is incorrect")
         require(
@@ -781,6 +789,7 @@ def expect_worker_rejected(
     result: dict[str, Any],
     mutation: str,
     host_termination: str | None = None,
+    staging_root: Path | None = None,
 ) -> None:
     try:
         validate_worker_semantics(result, None, mutation, host_termination)

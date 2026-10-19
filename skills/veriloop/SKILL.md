@@ -39,7 +39,8 @@ isolated evaluation:
   target, confirmed specification, scope bounds, and risk focus.
 - Do not accept or request the developer's reasoning, fixer explanation, prior review
   reports, findings ledger, acceptance-check results, or gate probes.
-- Do not read `.agent-review/`, including its baseline, ledger, or run archives.
+- Do not read `.agent-review/`, `REVIEW.md`, `PRD.md`, worker artifacts or outcome
+  histories, including through broad searches or displayed diffs. Use allowed paths.
 - Inspect the code and specification independently. Do not infer what another reviewer
   already checked.
 
@@ -203,7 +204,9 @@ Rules for the report:
   with a confident "checked and clean" section is a perfectly good review.
 - Suggest fixes but do not apply them unless the user asks. The deliverable of this
   skill is the review.
-- Persist the final report as `REVIEW.md` in the same directory as the confirmed
+- In strict loop mode return the report and JSON to the controller without writing
+  target files; the controller owns persistence. For standalone review, persist the
+  final report as `REVIEW.md` in the same directory as the confirmed
   spec (`IA.md`), including the fenced machine-readable JSON block; overwrite it on
   a re-review of the same work. The conversation report remains the source of truth.
 

@@ -27,6 +27,31 @@ A **spec-grounded code review and repair loop** for Codex and Claude Code.
 
 It checks agent-written changes from five perspectives, then repeats for up to three iterations until no failed finding remains and the goal's acceptance checks pass as executable commands.
 
+## Changes in 0.12.1
+
+This release reduces avoidable repair-loop work without weakening strict review or required verification.
+
+- Repair related findings as one bounded root-cause group. Reproduce failures where practical and verify normal behavior that must remain valid.
+- In loop mode, workers return structured results and the controller alone persists reports. Standalone review and repair keep their documented report behavior.
+- Exclude review histories, product outcome documents and worker artifacts from blind reviewer/gate inputs, searches and diffs.
+- Run local checks during repair and full required acceptance on the final candidate, including required device checks before gate. Retain independent controller verification; repeat passed checks only for a recorded reason.
+- Keep prior archives and require a changed repair approach before a user-authorized follow-up run after no progress. The three-iteration cap remains unchanged.
+- Validate worker payloads before submission with the read-only helper below. It checks JSON/schema, semantic status, exact criteria, the 16 KiB limit and artifact references, sizes, hashes and containment. It does not execute acceptance checks or replace transport-status validation.
+
+From the plugin repository root (Python 3.10 or later, standard library only):
+
+```sh
+python3 scripts/check_worker_result.py /absolute/path/result.json \
+  --role fixer --staging-root /absolute/path/staging \
+  --criterion "Exact Failed finding title"
+python3 evals/run_contract_evals.py
+python3 evals/test_worker_result_cli.py
+```
+
+Run the helper before the original submission; the existing format-only retry stays tool-free. Run records and real acceptance evidence remain authoritative. Exact role models/efforts, fresh independent reviewers and gates, snapshot invalidation, and mandatory checks remain in force. Strict-only requests fail closed when isolation is unavailable.
+
+These changes ship in the plugin source and versioned release, so updating to 0.12.1 or later does not depend on a local cache patch. They do not migrate existing run archives or imply a measured token-savings percentage.
+
 ## Skill architecture
 
 ```mermaid

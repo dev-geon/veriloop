@@ -28,6 +28,31 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT 라이선스" /></a>
 </p>
 
+## 0.12.1 변경 사항
+
+strict 검토와 필수 검증을 유지하면서 불필요한 수정·반복 비용을 줄였습니다.
+
+- 관련 지적을 공통 원인별로 묶어 제한된 범위에서 수정합니다. 가능한 경우 수정 전 실패를 재현하고 보존해야 할 정상 동작도 검증합니다.
+- 루프 안에서는 워커가 구조화 결과를 반환하고 controller만 보고서를 저장합니다. 단독 리뷰·수정의 문서 출력 방식은 유지합니다.
+- 독립 reviewer/gate의 입력·검색·diff에서 과거 검토, 제품 결과 문서와 워커 artifact를 제외합니다.
+- 수정 중에는 관련 검사, 최종 후보에는 전체 필수 수용 검사를 실행합니다. 필요한 기기 검사는 gate 전에 완료하며 controller의 독립 재검증을 유지합니다. 통과한 검사를 재실행할 때는 이유를 기록합니다.
+- 과거 실행 기록을 보존하고, 진전 없는 실행 뒤 사용자가 후속 실행을 승인하면 달라진 수정 접근을 명시합니다. 최대 3회 상한은 유지합니다.
+- 제출 전 읽기 전용 도구로 JSON·스키마·상태 의미·정확한 검사 항목·16 KiB 제한과 artifact 참조·크기·해시·경로를 검사합니다. 실제 수용 검사나 호스트 종료 상태 검증을 대신하지 않습니다.
+
+플러그인 저장소 루트에서 실행합니다. Python 3.10 이상이며 외부 패키지는 필요하지 않습니다.
+
+```sh
+python3 scripts/check_worker_result.py /absolute/path/result.json \
+  --role fixer --staging-root /absolute/path/staging \
+  --criterion "정확한 Failed 지적 제목"
+python3 evals/run_contract_evals.py
+python3 evals/test_worker_result_cli.py
+```
+
+검증 도구는 최초 결과 제출 전에 사용합니다. 기존 형식 전용 재시도 중에는 도구를 실행하지 않습니다. 정확한 역할별 모델·추론 강도, 매회 fresh 독립 검토·gate, 변경 시 gate 무효화와 필수 검사는 그대로 유지합니다. strict 전용 요청에서 컨텍스트 격리가 불가능하면 중단합니다.
+
+개선사항을 원본과 버전 릴리스에 포함하므로 0.12.1 이상으로 업데이트해도 로컬 캐시 패치에 의존하지 않습니다. 기존 실행 기록을 변환하지 않으며 측정하지 않은 토큰 절감률을 보장하지 않습니다.
+
 ## 스킬 아키텍처
 
 ```mermaid

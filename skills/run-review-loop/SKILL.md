@@ -24,6 +24,8 @@ Before changing code, record:
 If the specification is missing, invoke the bundled draft-spec skill and pause the
 loop until the user confirms the document. If the goal, checks, or scope bounds are
 too vague, ask the smallest blocking question. Never start from a guessed contract.
+Record the verification environment for each check (mock repository, local service/DB,
+or real-account end-to-end); evidence from one does not establish another.
 An unevaluable acceptance check fails; diagnose and rerun it instead of inferring
 success.
 
@@ -34,7 +36,8 @@ repository has a safe, inexpensive local start path.
 
 Read .agent-review/config.json when present. Supported roles are developer, fixer,
 reviewer, and gate. inherit, a missing role, or a missing file means the current
-session model.
+session model. Apply configured reasoning efforts exactly as well; fail preflight
+if either the model or effort cannot be honored.
 
 When delegating, apply an exact configured model only if the host supports model
 overrides. If the configured model cannot be used, stop and ask rather than silently
@@ -62,6 +65,15 @@ not a filesystem security claim.
 Keep worker responses compact. Return changed files, check command or assertion,
 result, short evidence, and blockers; omit reasoning traces and full tool transcripts.
 The controller must never paste raw worker output into another role's brief.
+
+Before the original worker submission, use
+`python3 ../../scripts/check_worker_result.py RESULT.json --role fixer --staging-root DIR`
+(paths here are relative to this skill) to validate the complete payload and artifacts.
+Use `--role developer` for development. The helper validates; it never truncates evidence,
+rewrites verdicts, runs acceptance checks or replaces controller/host-status validation.
+Perform this before returning the original result, not during the tool-free format retry.
+The controller reruns validation on the exact received payload; supply repeated
+`--criterion TITLE` arguments for the assigned checks or exact Failed titles.
 
 Before delegation, create a unique artifact staging directory outside the target
 worktree and grant the worker access only to its target plus that directory. Keep the
@@ -142,7 +154,9 @@ Before development, verify that the host can:
 3. send an allowlisted brief without attaching hidden conversation history.
 
 If any guarantee is unavailable, stop before changing code and name the unsupported
-capability. Ask whether the user authorizes relaxed review **for this run only**.
+capability. If the user or repository requires strict-only review, exit immediately
+as `blind_context_unavailable`; do not repeatedly offer relaxation. Otherwise, proceed with this explicit question:
+Ask whether the user authorizes relaxed review **for this run only**.
 Never infer approval from urgency, configuration, or a previous run. If approved, use
 the strongest available separation, keep the review verdict vocabulary unchanged,
 label each affected review and gate `independence: reduced` in the controller
@@ -176,6 +190,26 @@ freeze and review the cumulative target. Keep cross-component and full-suite che
 the final acceptance set. If no safe independent boundary exists, keep one batch rather
 than inventing a split.
 
+For repair work, group findings by the violated invariant and directly affected
+callers before editing. Give the fixer a bounded causal repair packet, not a mandate
+to fix unrelated debt. Preserve finding identities while checking all affected paths.
+Where practical, reproduce the failure before repair and check both the failure and
+normal behavior that must remain valid. “Minimal” means the smallest coherent repair,
+not the fewest lines or one symptom at a time.
+
+Workers run their assigned local checks; the controller independently reruns those
+checks. Run the full required acceptance set on the final candidate, including required
+device checks before gate. Do not repeat full builds or device flows after each edit.
+After a pass, repeat checks only for a new relevant change, failure or unresolved risk;
+record why. Do not reuse results from an older target as final-candidate evidence.
+Record a command's evidence once and map all covered criteria to it without dropping
+any criterion. Keep reviewer scope at cumulative target plus directly affected behavior.
+
+Use completion notifications or bounded waits instead of unchanged polling. Parallelize
+independent reads/checks, but serialize mutations to shared DBs, devices and worktrees.
+Never promise token savings without measurements; track review/fix counts and reasons
+for repeated checks instead. Do not lower configured role models to save cost.
+
 ## 7. Iterate at most three times
 
 ### Develop
@@ -208,8 +242,10 @@ earlier iteration or gate. Run the bundled `veriloop` skill with only:
 - risk focus.
 
 Do not send developer or fixer reasoning, prior reports, ledger contents, accepted
-warnings, acceptance results, or gate probes. Tell the reviewer not to read
-`.agent-review/`. If forbidden context leaks into the brief, discard that review and
+warnings, acceptance results, or gate probes. Exclude `.agent-review/`, `REVIEW.md`,
+`PRD.md`, worker artifacts and other outcome/history documents from reviewer and gate
+reads, searches and displayed diffs. Use explicit allowed paths; a broad search followed
+by filtering already-displayed history is not isolation. If forbidden context leaks into the brief, discard that review and
 start a clean reviewer; if that cannot be done, return to the strict-mode preflight.
 
 Require the prose report and final machine-readable JSON block. The controller then
@@ -226,6 +262,11 @@ output, supply that schema to the reviewer.
    with evidence.
 3. No progress: any finding is recurred, or the failed count did not decrease from
    the previous iteration. Stop and ask for the specific human decision needed.
+
+A user-authorized follow-up run does not erase the previous lack of progress. Before
+restarting, state the repeated invariant, why the previous approach was insufficient,
+and the changed repair approach or missing decision. Do not automatically open a new
+run to bypass the cap; retain links to preceding runs in controller-only records.
 
 ### Final blind gate with late-bound probes
 
@@ -291,7 +332,10 @@ Warnings never keep the loop running by themselves.
 ### Fix
 
 When failed findings remain, delegate the bundled apply-review-findings skill with
-the review report, confirmed specification, risk focus, and ledger. Require minimal
+the Failed findings with minimal evidence, confirmed specification, risk focus,
+and only the relevant ledger identities/dispositions. Loop mode overrides the
+standalone reporting behavior of that skill: the fixer returns worker JSON only and
+does not edit review reports or controller records. Require minimal
 edits and verification against each finding's evidence. Then review again in a fresh
 context.
 
@@ -337,6 +381,10 @@ Report:
 - every remaining warning and its required disposition: accept, file an issue, or
   clean up now.
 
+The controller alone writes loop reports and archives; reviewer/gate/fixer outputs
+do not mutate these files. Keep prior run archives immutable and link preceding runs
+from the latest report.
+
 Persist the final report as `REVIEW.md` in the same directory as the confirmed
 specification (`IA.md`), so the outcome lives beside the spec it verified.
 
@@ -365,6 +413,10 @@ A checklist of acceptance criteria is not a product document. Write these, in th
   with their disposition, and follow-up work with its owner or ticket. Record a
   discrepancy you could not resolve as a discrepancy; do not quietly drop it.
 - **Limits of this document** — what it did not cover and what its claims rest on.
+
+For a follow-up repair, update the existing product document in place and preserve
+unchanged grounded sections; do not rewrite the whole feature description. Reference
+shared verification evidence rather than copying full logs into both reports.
 
 Scale the chapters to the work: a single bug fix earns a short paragraph per chapter and
 a full verification table; a program-sized deliverable earns the whole document. Never
