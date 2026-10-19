@@ -81,11 +81,52 @@
         "properties": {
           "criterion": { "type": "string", "minLength": 1 },
           "check": { "type": "string", "minLength": 1 },
+          "phase": {
+            "type": "string",
+            "enum": ["loop", "post_deploy", "manual"]
+          },
           "result": {
             "type": "string",
-            "enum": ["pass", "fail", "blocked"]
+            "enum": ["pass", "fail", "blocked", "deferred"]
           },
           "evidence": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "preceding_runs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "oracles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/oracle" }
+    },
+    "model_substitutions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "from", "to", "reason", "authorization"],
+        "properties": {
+          "role": { "type": "string", "enum": ["developer", "fixer", "reviewer", "gate"] },
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "authorization": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "worker_successions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["predecessor", "successor", "reason", "authorization"],
+        "properties": {
+          "predecessor": { "type": "string", "minLength": 1 },
+          "successor": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "authorization": { "type": "string", "minLength": 1 }
         }
       }
     },
@@ -111,6 +152,31 @@
           "type": ["string", "null"],
           "enum": ["strict", "reduced", null]
         }
+      }
+    }
+  },
+  "$defs": {
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "invariant", "reference", "generator", "budget", "result", "strength", "evidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "invariant": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "reference": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "generator": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "budget": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "result": { "type": "string", "enum": ["pass", "fail", "blocked"] },
+        "strength": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["historical", "rediscovered"],
+          "properties": {
+            "historical": { "type": "integer", "minimum": 0 },
+            "rediscovered": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "evidence": { "type": "string", "minLength": 1, "maxLength": 512 }
       }
     }
   }

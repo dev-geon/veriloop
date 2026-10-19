@@ -29,6 +29,43 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT 라이선스" /></a>
 </p>
 
+## 0.13.0 변경 사항
+
+같은 불변식이 계속 깨져 반복이 끝나지 않는 작업과, 루프 밖으로 밀려나던 검증·기록 관리를 다룹니다.
+
+- **반복 불변식은 오라클로 올립니다.**<br>
+  같은 불변식이 두 반복 이상에서 Failed 를 내거나 그 불변식으로 `no_progress`·`iteration_cap` 이 나면, 증상별 수정을 멈춥니다.<br>
+  올바름이 자명한 기준(단순 모형, 최적화 전 경로, 원본 구현, 두 실행 사이의 메타모픽 관계)과 비교하는 실행형 오라클을 명세에 확정한 뒤에만 다음 수정 반복을 엽니다.<br>
+  오라클에는 시드 생성기, 정규화, 예산, 과거 결함 재발견(수리를 끄면 예전 Failed 가 모두 다시 잡혀야 함)이 들어갑니다.
+- **명세는 계약만 담습니다.**<br>
+  `IA.md` 에는 현재 계약만 두고, 결정과 개정 이력은 옆의 `DECISIONS.md` 에 둡니다.<br>
+  명세와 코드 주석에 리뷰 지적 번호나 run 번호를 쓰지 않습니다. reviewer 와 gate 는 `DECISIONS.md` 를 읽지 않습니다.
+- **수용 검사를 확정 전에 한 번 돌립니다.**<br>
+  draft-spec 이 모든 loop 검사를 현재 기준선에서 실행해, 명령 누락·권한·자격 증명·읽기 전용 가드 문제를 확정 전 질문으로 드러냅니다.
+- **수용 기준에 단계를 둡니다.**<br>
+  `loop`·`post_deploy`·`manual` 중 하나입니다. `goal_met` 은 loop 기준으로만 판정하고, 배포 후·수동 기준은 `deferred` 로 기록해 미결 항목으로 추적합니다.
+- **멈춘 워커와 승계 절차를 정했습니다.**<br>
+  진행이 없는 워커는 `stall_minutes`(기본 20분) 뒤 정지로 처리하고, 그 run 은 다른 차단 워커처럼 `worker_blocked` 로 끝납니다.<br>
+  사용자가 승인하면 후속 run 에서 승계 워커가 이전 커밋과 미커밋 변경을 검증 대상 출발 재료로만 받아 이어 갑니다.<br>
+  사전에 승인한 `fallback_models` 만 자동으로 대체하고, 대체 내역은 `run.json` 에 남깁니다.
+- **임시 경로와 기록 보관을 결정적으로 만들었습니다.**<br>
+  controller 가 역할마다 고유한 임시 경로를 발급합니다.<br>
+  `scripts/archive_run.py` 가 산출물 복사·해시 검증·경로 재작성·스키마 검증을 마친 뒤에만 staging 을 지웁니다.
+- **REVIEW.md 형식과 검증기를 정했습니다.**<br>
+  맨 위 현재 상태, run 별 변화분, 끝에 `json veriloop-report` 블록 하나로 구성합니다. `scripts/check_review_report.py` 로 검증합니다.
+
+```sh
+python3 scripts/archive_run.py --agent-review .agent-review --run-json /absolute/path/draft-run.json \
+  --worker /absolute/path/worker.json --gate /absolute/path/gate.json \
+  --review /absolute/path/review-1.md --staging /absolute/path/staging --delete-staging
+python3 scripts/check_review_report.py path/to/REVIEW.md --run-json .agent-review/runs/003/run.json
+python3 evals/test_archive_run.py
+python3 evals/test_review_report.py
+```
+
+`run.json` 에 새로 생긴 필드는 모두 선택이라 기존 실행 기록은 그대로 유효합니다.<br>
+측정하지 않은 소요 시간·토큰 절감률을 약속하지 않습니다.
+
 ## 0.12.1 변경 사항
 
 strict 검토와 필수 검증을 유지하면서 불필요한 수정·반복 비용을 줄였습니다.
@@ -294,7 +331,8 @@ codex plugin add veriloop@veriloop
 |---|---|
 | `.agent-review/config.json` | 루프 역할별 모델 설정 |
 | `.agent-review/ledger.json` | 반복을 가로지르는 finding 상태: open, Pass, recurred, accepted |
-| `.agent-review/runs/` | 완료된 실행 기록 |
+| `.agent-review/runs/` | 완료된 실행 기록(`scripts/archive_run.py` 로 보관) |
+| 명세 옆 `DECISIONS.md` | 명세의 결정·개정 이력. reviewer 와 gate 는 읽지 않습니다 |
 
 ### 자동화 신뢰성
 
@@ -309,7 +347,7 @@ codex plugin add veriloop@veriloop
 python3 evals/run_contract_evals.py
 ```
 
-이 검사는 API 호출 없이 핵심 controller trace 3개, 명시적으로 승인된 reduced 전환 1개, worker 종료 전환 3개, 워크플로 적대적 변형 24개, 정상 worker 결과 7개, worker 결과 변형 21개, raw-JSON fallback 경로 6개를 확인합니다.<br>
+이 검사는 API 호출 없이 핵심 controller trace 3개, 명시적으로 승인된 reduced 전환 1개, worker 종료 전환 3개, 워크플로 적대적 변형 24개, 정상 worker 결과 7개, worker 결과 변형 21개, raw-JSON fallback 경로 6개, 단계·오라클·승계 확장 3개와 그 적대적 변형 7개를 확인합니다.<br>
 오케스트레이션 기록과 실행 증거를 검증하는 용도이며 실제 모델 컨텍스트 격리와 주관적인 리뷰 품질은 신규 서브에이전트를 사용하는 live forward test로 확인해야 합니다.
 
 모든 리뷰 보고서 끝에는 `verdict`와 `findings[]`를 포함한 기계 판독용 JSON 블록이 붙습니다.<br>
@@ -336,7 +374,8 @@ skills/
 ├── run-review-loop/              # 구현 → 리뷰 → 수정 → 최종 게이트
 ├── veriloop/                     # 다섯 관점의 독립 블라인드 리뷰
 └── apply-review-findings/        # 검증된 지적사항 수정
-schemas/                           # 리뷰·게이트·실행 기록 계약
+schemas/                           # worker·리뷰·게이트·실행 기록·REVIEW.md 요약 계약
+scripts/                           # worker 결과 검사·실행 기록 보관·REVIEW.md 검증 도구
 evals/                             # 실행 가능한 controller trace와 적대적 변형
 ```
 

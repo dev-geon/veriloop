@@ -29,6 +29,43 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.13.0
+
+This release targets work that never converges because the same invariant keeps failing, and verification or record keeping that used to slip outside the loop.
+
+- **Escalate a recurring invariant to an oracle.**<br>
+  When one invariant produces Failed findings in two iterations, or causes `no_progress`/`iteration_cap`, symptom-by-symptom repair stops.<br>
+  The next repair iteration opens only after the specification holds a confirmed executable oracle that compares the implementation with a reference that is correct by construction (a simpler model, the unoptimized path, the original implementation, or a metamorphic relation).<br>
+  The oracle states a seeded generator, normalization, budgets, and strength: with each repair disabled, every historical Failed finding must be detected again.
+- **Keep the specification a contract.**<br>
+  `IA.md` holds only the current contract; decisions and revision history live in a sibling `DECISIONS.md`.<br>
+  Specs and code comments never cite finding identifiers or run numbers, and reviewers and gates do not read `DECISIONS.md`.
+- **Preflight acceptance checks before confirmation.**<br>
+  draft-spec runs every loop-phase check once on the current baseline, so missing commands, permissions, credentials, and read-only guards surface as questions instead of mid-batch blockers.
+- **Give acceptance criteria a phase.**<br>
+  `loop`, `post_deploy`, or `manual`. Only loop criteria decide `goal_met`; post-deploy and manual criteria are recorded as `deferred` and tracked as open items.
+- **Handle stalled workers and successors.**<br>
+  A worker without progress for `stall_minutes` (default 20) is treated as stalled, and its run ends as `worker_blocked` like any other blocked worker.<br>
+  With the user's authorization, a successor continues in a follow-up run from the predecessor's commits and uncommitted diff as untrusted starting material.<br>
+  Only pre-authorized `fallback_models` substitute automatically, and each substitution is recorded in `run.json`.
+- **Make temporary paths and archiving deterministic.**<br>
+  The controller issues a unique temporary path per role.<br>
+  `scripts/archive_run.py` copies and digest-verifies artifacts, rewrites archived paths, validates every record, and only then deletes staging.
+- **Define the REVIEW.md layout and validate it.**<br>
+  A current-state section first, one delta section per run, and exactly one `json veriloop-report` block at the end, checked by `scripts/check_review_report.py`.
+
+```sh
+python3 scripts/archive_run.py --agent-review .agent-review --run-json /absolute/path/draft-run.json \
+  --worker /absolute/path/worker.json --gate /absolute/path/gate.json \
+  --review /absolute/path/review-1.md --staging /absolute/path/staging --delete-staging
+python3 scripts/check_review_report.py path/to/REVIEW.md --run-json .agent-review/runs/003/run.json
+python3 evals/test_archive_run.py
+python3 evals/test_review_report.py
+```
+
+Every new `run.json` field is optional, so existing run archives stay valid.<br>
+No measured time or token savings are implied.
+
 ## Changes in 0.12.1
 
 This release reduces avoidable repair-loop work without weakening strict review or required verification.
@@ -292,7 +329,8 @@ The plugin discovers the repository's conventions at review time.
 |---|---|
 | `.agent-review/config.json` | Per-role model routing |
 | `.agent-review/ledger.json` | Finding state across iterations: open, Pass, recurred, accepted |
-| `.agent-review/runs/` | Archived run records |
+| `.agent-review/runs/` | Archived run records (written by `scripts/archive_run.py`) |
+| `DECISIONS.md` beside the spec | Decision and revision history of the spec; reviewers and gates do not read it |
 
 ### Automation reliability
 
@@ -307,7 +345,7 @@ The plugin discovers the repository's conventions at review time.
 python3 evals/run_contract_evals.py
 ```
 
-The suite covers three primary controller traces, one explicitly authorized reduced-mode transition, three worker termination transitions, 24 workflow mutations, seven valid worker envelopes, 21 worker-result mutations, and six raw-JSON fallback paths without API calls.<br>
+The suite covers three primary controller traces, one explicitly authorized reduced-mode transition, three worker termination transitions, 24 workflow mutations, seven valid worker envelopes, 21 worker-result mutations, six raw-JSON fallback paths, and three phase/oracle/succession extensions with seven guard mutations, without API calls.<br>
 It validates orchestration records and executable evidence; actual model-context isolation and subjective review quality still require a live forward test with fresh subagents.
 
 Every review report ends with a machine-readable JSON block containing `verdict` and `findings[]`.<br>
@@ -334,7 +372,8 @@ skills/
 ├── run-review-loop/              # Develop → review → repair → final gate
 ├── veriloop/                     # Independent five-pass blind review
 └── apply-review-findings/        # Repair verified findings
-schemas/                           # Review, gate, and archived-run contracts
+schemas/                           # Worker, review, gate, archived-run, and REVIEW.md summary contracts
+scripts/                           # Worker-result check, run archiving, and REVIEW.md validation
 evals/                             # Executable controller traces and guard mutations
 ```
 

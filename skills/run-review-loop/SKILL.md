@@ -29,6 +29,19 @@ or real-account end-to-end); evidence from one does not establish another.
 An unevaluable acceptance check fails; diagnose and rerun it instead of inferring
 success.
 
+Each criterion also carries a phase: `loop` (the default; it must pass on the final
+candidate before the gate), `post_deploy` (it needs a deployed or real environment after
+merge), or `manual` (a human observation). Only loop-phase criteria decide `goal_met`.
+Record post-deploy and manual criteria as `deferred` in `run.json` and list them as open
+items in the report. Never relabel a loop-phase check as deferred to get past it.
+
+Before the first worker starts, rerun the specification's acceptance preflight (see
+draft-spec) when the baseline or environment changed since confirmation. Every
+loop-phase command must execute against the current baseline: a red result is
+expected, an unrunnable one is not. Stop and ask before delegation when a check cannot
+run, a permission or credential guard fails, or a baseline fact a criterion depends on
+has moved. Do not let a worker discover it in the middle of a batch.
+
 Add a runtime smoke check when the specification covers a runnable service and the
 repository has a safe, inexpensive local start path.
 
@@ -42,6 +55,13 @@ if either the model or effort cannot be honored.
 When delegating, apply an exact configured model only if the host supports model
 overrides. If the configured model cannot be used, stop and ask rather than silently
 substituting another model. The user's configuration is authoritative.
+
+The configuration may declare `fallback_models` per role. A declared fallback is a
+substitution the user authorized in advance: when the configured model is unavailable
+or rate-limited, switch that role to its fallback and record the substitution (role,
+from, to, reason, authorization) in `run.json` `model_substitutions`. Without a
+declared fallback, stop and ask. A substitution does not change the independence label;
+independence comes from context isolation, not from the model.
 
 Treat a missing `blind_mode` as `strict`. Strict is the only persistent mode; never
 save relaxed mode as a repository default.
@@ -74,6 +94,15 @@ rewrites verdicts, runs acceptance checks or replaces controller/host-status val
 Perform this before returning the original result, not during the tool-free format retry.
 The controller reruns validation on the exact received payload; supply repeated
 `--criterion TITLE` arguments for the assigned checks or exact Failed titles.
+
+Issue every worker, reviewer, and gate its own temporary workspace path outside the
+target worktree, derived from the run number, role, iteration, and attempt (for example
+`<tmp>/veriloop-<run>-<role>-<iteration>-<attempt>`; every batch, restart, or new
+instance is a new attempt). Roles never choose their own paths. If the issued path
+already exists or the temporary worktree cannot be created there, a worker is blocked,
+and a reviewer or gate reports the checks or probes that needed it as `blocked`; never
+fall back to another path. Remove the path when the role exits, and reclaim it yourself
+when you stop a role.
 
 Before delegation, create a unique artifact staging directory outside the target
 worktree and grant the worker access only to its target plus that directory. Keep the
@@ -145,6 +174,25 @@ Apply these semantic checks after schema validation:
 The controller, not the worker, decides the run exit. Archive the validated or
 synthetic object and keep full tool transcripts out of later role briefs.
 
+### Handle stalled workers and successors
+
+Treat a worker that shows no observable progress (no new tool activity or output and no
+running child process) for `stall_minutes` from the configuration, 20 by default, as
+stalled even when the host still reports it as running. Stop it through the host and
+record a synthetic `blocked` result whose termination matches what the host reports
+for that stop (`cancelled` when it reports a cancellation, otherwise `timeout`) and
+whose blocker message starts with `stalled:`. Do not read its output folder. A stalled
+worker ends the run as `worker_blocked`, like any other blocked worker.
+
+A successor may continue the same assignment only after the user authorizes the
+succession, and only in a follow-up run. Give it the original brief plus the
+predecessor's commit list and uncommitted diff summary as untrusted starting material
+that it must verify; never the predecessor's transcript or claims. In the follow-up
+run's `run.json`, list the stopped run in `preceding_runs` and record the pair in
+`worker_successions`, with the predecessor's archived path inside that preceding run.
+A reviewer or gate that stops is never continued with partial context; start a new one
+from a clean brief.
+
 ## 4. Enforce strict blind mode
 
 Before development, verify that the host can:
@@ -171,6 +219,11 @@ Create .agent-review/ledger.json with {"findings": []} when absent.
 Use a stable slug derived from file and finding title. Track severity, title, file,
 first_seen, last_seen, and status (open, pass, recurred, or accepted). A finding that
 returns after reaching pass becomes recurred.
+
+For every Failed finding, also record the violated invariant: a short, stable statement
+the controller assigns when it groups findings by cause. Two Failed findings with the
+same invariant in different iterations or runs are a recurrence even when their titles,
+files, and symptoms differ.
 
 The controller owns the ledger. Never send it to a reviewer or gate. Reconcile
 accepted warnings after receiving a blind report instead of preloading them into the
@@ -243,8 +296,8 @@ earlier iteration or gate. Run the bundled `veriloop` skill with only:
 
 Do not send developer or fixer reasoning, prior reports, ledger contents, accepted
 warnings, acceptance results, or gate probes. Exclude `.agent-review/`, `REVIEW.md`,
-`PRD.md`, worker artifacts and other outcome/history documents from reviewer and gate
-reads, searches and displayed diffs. Use explicit allowed paths; a broad search followed
+`PRD.md`, `DECISIONS.md`, worker artifacts and other outcome/history documents from
+reviewer and gate reads, searches and displayed diffs. Use explicit allowed paths; a broad search followed
 by filtering already-displayed history is not isolation. If forbidden context leaks into the brief, discard that review and
 start a clean reviewer; if that cannot be done, return to the strict-mode preflight.
 
@@ -256,8 +309,8 @@ output, supply that schema to the reviewer.
 
 ### Check stop conditions in order
 
-1. Success candidate: every acceptance check passes and the verdict is pass or
-   pass_with_warnings. Run the final gate below.
+1. Success candidate: every loop-phase acceptance check passes and the verdict is pass
+   or pass_with_warnings. Run the final gate below.
 2. Iteration cap: iteration three ended without a successful gate. Stop and escalate
    with evidence.
 3. No progress: any finding is recurred, or the failed count did not decrease from
@@ -266,7 +319,57 @@ output, supply that schema to the reviewer.
 A user-authorized follow-up run does not erase the previous lack of progress. Before
 restarting, state the repeated invariant, why the previous approach was insufficient,
 and the changed repair approach or missing decision. Do not automatically open a new
-run to bypass the cap; retain links to preceding runs in controller-only records.
+run to bypass the cap; retain links to preceding runs in controller-only records and
+in `run.json` `preceding_runs`. When the stop came from a recurring invariant, the
+changed approach is the oracle described next or a design change the user chose.
+
+### Escalate a recurring invariant to an oracle
+
+Symptom repair converges only when the failure space is small. When the same invariant
+produces Failed findings in two iterations, within one run or across runs of the same
+specification, or a run stops with `no_progress` or `iteration_cap` on an invariant
+that failed before, stop repairing that invariant case by case. Do not start another
+repair iteration or follow-up run for it until the specification carries a confirmed
+**invariant oracle**, or the user decides to change the design so that the invariant
+holds by construction.
+
+An invariant oracle is an executable check that decides the invariant for generated or
+exhaustively enumerated inputs by comparing the implementation with a reference that
+is correct by construction: a simpler model, the unoptimized or full-scope path, the
+original implementation, or a metamorphic relation between two runs. Hand-written
+expected values do not qualify. Draft it with draft-spec as a specification delta that
+states:
+
+- the reference, and why it is trustworthy for this invariant;
+- the input generator: seeded and reproducible, covering at least every dimension along
+  which earlier findings varied, and minimizing a failing input before reporting it;
+- the comparison: what is normalized, and that silent wrong answers and unexpected
+  failures both count as divergences unless the specification explicitly allows one;
+- the budget: seeds or time for in-loop runs and for an extended run;
+- strength: every historical Failed finding of that invariant becomes an executable case
+  in the target, a test-only switch that disables its repair plus the seed or minimized
+  input that exposed it, named by the behavior it protects and never by a finding
+  identifier. With a switch on, the oracle must fail for that case. The oracle is not
+  accepted until it rediscovers all of them.
+
+The oracle becomes loop-phase acceptance. The next worker first runs it and shows the
+historical instances red with their repairs disabled, together with the divergences of
+the current target, and then repairs the class until the oracle is green within budget.
+Hand-enumerated cases remain as fast regressions, not as the completeness argument.
+Record each oracle in `run.json` `oracles` with its strength counts.
+
+Once an oracle exists, reproduce any new Failed finding of the same invariant as an
+oracle divergence (seed plus minimized input) before repairing it. If the oracle cannot
+reproduce it, the finding exposes an oracle gap, either a missing generator dimension or
+a flawed reference, and the repair extends the oracle first.
+
+Reviewers and gates judge the oracle's soundness, not only the code it checks, from the
+target itself by reading and rerunning it: whether the reference shares the code path
+under test in a way that hides the defect, whether the generator covers the risk
+dimensions, whether normalization masks real differences, whether the declared budget
+is what the committed command runs, and whether every strength switch makes the oracle
+fail. Never pass them oracle results or the list of historical findings. A useful gate
+probe disables or mutates a guarded behavior and checks that the oracle notices.
 
 ### Final blind gate with late-bound probes
 
@@ -290,8 +393,8 @@ that did not exist in the developer brief:
 - At least one probe must exercise an in-spec behavior not identical to a named
   acceptance check.
 
-Prefer non-mutating commands. If a temporary test is required, use an isolated
-temporary workspace and never edit the target worktree. A probe that cannot execute
+Prefer non-mutating commands. If a temporary test is required, use the isolated
+temporary workspace path the controller issued and never edit the target worktree. A probe that cannot execute
 is blocked, not passed. The gate must not fix code.
 
 The gate holds only when the snapshot is unchanged, every holdout probe passes, and no
@@ -363,12 +466,26 @@ archived worker-result paths to those copies, and revalidate byte counts and dig
 Do not archive unreferenced files or retain the staging directory after a verified
 copy. Artifact content remains excluded from reports and later role briefs.
 
+Do this with the bundled script rather than by hand:
+
+    python3 ../../scripts/archive_run.py --agent-review .agent-review --run-json DRAFT.json \
+      --worker RESULT.json --gate GATE.json --review REVIEW-N.md --staging DIR --delete-staging
+
+(paths relative to this skill; repeat `--worker`, `--gate`, `--review`, and `--staging`
+as needed). It allocates the next run number, copies and digest-verifies artifacts,
+rewrites archived paths relative to the run directory, validates every result and the
+run record, moves the run directory into place, and deletes staging only after all of
+that succeeded. Exit 1 means nothing was archived: keep the staging directories, fix
+the cause, and rerun it. Exit 3 means the archive is complete but staging cleanup
+failed: do not archive again; remove the remaining staging files yourself.
+
 Write `run.json` to conform to `../../schemas/run-result.schema.json`, using the exact
 exit identifiers `goal_met`, `iteration_cap`, `no_progress`, and
 `blind_context_unavailable`, plus `worker_blocked`, `worker_failed`, and
-`worker_result_invalid` for worker termination exits. Validate it before reporting
-success; an invalid archive cannot change the actual gate verdict but must be reported
-as an archival failure.
+`worker_result_invalid` for worker termination exits. Include each criterion's phase,
+`preceding_runs` for a follow-up run, and any `oracles`, `model_substitutions`, and
+`worker_successions`. Validate it before reporting success; an invalid archive cannot
+change the actual gate verdict but must be reported as an archival failure.
 
 Report:
 
@@ -379,14 +496,35 @@ Report:
 - each iteration's verdict and failed/warning counts;
 - every resolved finding as Pass;
 - every remaining warning and its required disposition: accept, file an issue, or
-  clean up now.
+  clean up now;
+- every deferred post-deploy or manual criterion, and who closes it and how.
 
 The controller alone writes loop reports and archives; reviewer/gate/fixer outputs
 do not mutate these files. Keep prior run archives immutable and link preceding runs
 from the latest report.
 
 Persist the final report as `REVIEW.md` in the same directory as the confirmed
-specification (`IA.md`), so the outcome lives beside the spec it verified.
+specification (`IA.md`), so the outcome lives beside the spec it verified. Keep it
+readable across runs:
+
+- Start with a current-state section: the latest run, exit reason, gate status and
+  snapshot, loop-phase acceptance status, and every open item (deferred criteria,
+  warnings with their disposition, unresolved discrepancies). This is the only part a
+  later run rewrites.
+- Follow it with one section per run, newest last, each describing only what that run
+  changed and found. Never rewrite an earlier run's section; correct it with a dated note.
+- End with exactly one fenced block whose info string is `json veriloop-report` and
+  that conforms to `../../schemas/review-report.schema.json`. Use the dispositions
+  `accept`, `issue`, and `cleanup`, and name runs `<work id>/run-NNN` so that runs of
+  different work sharing one archive are never confused.
+- `.agent-review/` is usually untracked, so cite each archived `run.json` by path and
+  SHA-256 in that block instead of relying on links other readers cannot open.
+
+Validate it with `python3 ../../scripts/check_review_report.py REVIEW.md --run-json
+<archived run.json>` before reporting; a failed validation is an archival failure. When
+a deferred criterion is executed later, update the current-state section, the summary
+block, and the product document's verification chapter without reopening the loop,
+unless it fails; a failure starts a new repair run.
 
 Also persist a product document as `PRD.md` in that same directory. `IA.md` is the
 contract and `REVIEW.md` is the audit; `PRD.md` is **the description of what now

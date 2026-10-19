@@ -25,6 +25,12 @@ with a check for each exact Failed title; do not write REVIEW.md, ledger or run 
 Do not inspect passed gate probes or expand a minimal gate failure packet. The table
 and report updates in Step 5 apply only to standalone invocations.
 
+When the packet names an invariant oracle, reproduce each Failed finding as an oracle
+divergence (seed plus minimized input) before editing. If the oracle cannot reproduce
+it, extend the oracle first and include that extension in the finding's check. In any
+mode, never write review history (finding identifiers, run numbers, "after review")
+into code comments; state the requirement the code meets.
+
 ## Step 1 — Load the findings
 
 Locate the review report (the user points at it, it is the output of a review that
@@ -110,4 +116,7 @@ Then list files changed, and anything you deliberately did not touch (nits, unre
 observations). Write in the language the user is conversing in.
 
 When the findings came from a persisted `REVIEW.md`, update that file's finding
-statuses to match this table so the persisted report reflects the repaired state.
+statuses to match this table so the persisted report reflects the repaired state. A
+loop report (one that contains a `json veriloop-report` block) is the loop
+controller's record: do not edit it; update `REVIEW-standalone.md` when that is where
+the findings came from, and otherwise report the table in the conversation only.

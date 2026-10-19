@@ -100,7 +100,8 @@ Use this structure:
 ## Current behavior          ← what the code does today, file:line grounded
 ## Target behavior           ← what it must do when this work is done
 ## Constraints               ← repo conventions and workflow that apply; what must NOT change
-## Acceptance criteria       ← each criterion paired with an executable check
+## Acceptance criteria       ← each criterion paired with an executable check and a phase
+## Invariant oracles         ← only when correctness spans a large input space (see below)
 ## Risks & edge cases
 ## Risk focus                ← the ONE area where this change fails worst
 ## References                ← files, tickets, related docs
@@ -110,6 +111,48 @@ Acceptance criteria follow the same rule as the loop's goal contract: every crit
 is paired with the exact check that verifies it (a test command, a grep assertion, a
 build, an HTTP call). A criterion with no runnable check is a taste judgment — sharpen
 it or move it out.
+
+Give every criterion a phase: `loop` (default; verified before the change lands),
+`post_deploy` (needs the deployed or real environment), or `manual` (a human
+observation). Only loop-phase criteria decide whether the loop succeeds; the others are
+reported as deferred until someone runs them. Phrase a criterion against measured
+baseline facts (an existing warning count, already-failing tests, known flaky tests)
+rather than an ideal the baseline cannot meet, and make a search-based check exclude
+the specification and other documents that quote its own pattern.
+
+**Invariant oracles.** When the work must hold an invariant over a space too large to
+enumerate by hand (a cache or index that must answer exactly like its source, an
+optimized path that must equal the plain one, a port that must preserve another
+system's semantics), or when `run-review-loop` routes here because an invariant kept
+failing, specify an oracle instead of more hand-written cases: the reference that is
+correct by construction, the seeded input generator and the dimensions it must cover,
+the comparison and its normalization, the in-loop and extended budgets, and the
+strength requirement: every earlier failure of the invariant is encoded in the target as
+a test-only switch that disables its repair plus the seed or minimized input that
+exposed it, named by the behavior it protects, and the oracle must fail with each switch
+on. The oracle's checks are loop-phase acceptance criteria.
+
+### Preflight every acceptance check
+
+Before presenting the draft, run each loop-phase check once against the current
+baseline, without mutating anything. A red result is fine and expected; a check that
+cannot run is a defect of the draft: a missing command or test filter, a syntax error, a
+multi-project invocation the tool rejects, an unreachable environment, a missing
+permission or credential, or a read-only guard that trips. Record what each check
+returned on the baseline. Do not execute post-deploy or destructive checks; confirm only
+that their entry point exists. Raise every failure as a question before confirmation,
+so that no worker discovers it halfway through a batch.
+
+### Keep the contract separate from its history
+
+`IA.md` holds the current contract only. Put decision records, revision history,
+rejected alternatives, and the reasons behind each change in a sibling `DECISIONS.md`.
+Workers and reviewers read the contract; reviewers do not read `DECISIONS.md`. Never
+cite review finding identifiers, run numbers, reviewer or gate details in `IA.md` or in
+product code comments; state the requirement itself, so later reviewers judge the code
+rather than the history that produced it. If the contract grows beyond what one reader
+can hold in a single pass (as a rule of thumb, about 60 KB), split it by component into
+linked parts and give each role only the parts it needs.
 
 **Risk focus** is one short paragraph naming where this change fails worst (which
 lens, which file or contract) — `run-review-loop` aims its final-gate reviewer there and the
@@ -148,6 +191,12 @@ converge on the wrong target.
 
 Present the draft and ask the user to correct and confirm it. Apply their corrections.
 Only a confirmed spec counts.
+
+A later change to a confirmed spec, including an oracle delta requested by
+`run-review-loop`, follows the same path in small form: read the code it touches,
+close its decisions with the user, rerun the preflight for the criteria it adds or
+changes, and get confirmation. Edit the contract in place, add a version line at the
+top of `IA.md`, and append the rationale to `DECISIONS.md`.
 
 Then state the confirmed spec's path plainly, so the caller can use it. The
 `run-review-loop` goal contract cites it as ground truth for the developer, reviewer, and

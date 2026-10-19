@@ -1,11 +1,12 @@
 # CI and hook integration
 
-Veriloop publishes four JSON Schema contracts:
+Veriloop publishes five JSON Schema contracts:
 
 - `schemas/worker-result.schema.json` — developer and fixer completion output;
 - `schemas/review-result.schema.json` — standalone review and PR gate output;
 - `schemas/gate-result.schema.json` — late-bound final gate output;
-- `schemas/run-result.schema.json` — archived `run.json` output.
+- `schemas/run-result.schema.json` — archived `run.json` output;
+- `schemas/review-report.schema.json` — the single summary block at the end of `REVIEW.md`.
 
 Use native structured output when the host supports it. Otherwise require raw JSON and
 validate it before reading the verdict. Never extract JSON from prose with a regular
@@ -59,6 +60,46 @@ The same run exercises three worker termination exits, accepts seven valid
 completed/blocked/failed worker envelopes, rejects twenty-one contradictory or
 schema-invalid worker-result mutations, and checks six whole-response JSON fallback
 paths including the single format-only retry and fail-closed second failure.
+
+Since 0.13.0 it also accepts a deferred post-deploy criterion, a fully rediscovering
+invariant oracle, and a worker succession recorded by a follow-up run, and rejects seven
+extension mutations: a loop-phase criterion hidden as deferred, a post-deploy criterion
+claimed inside the loop, `goal_met` with a failing oracle, `goal_met` with an oracle that
+missed a historical failure, a succession to an unarchived worker, a succession inside
+one run (which would bypass the fail-closed worker exit), and a succession from a run
+that is not listed in `preceding_runs`. It also checks that the run-review-loop and
+draft-spec instructions still contain the preflight, phase, oracle, stall, succession,
+temporary-path, archive, and report-block rules.
+
+The trace model detects no progress by finding identity (file and title) and failed
+counts. Recurrence of the same invariant under a different title is a controller
+judgment recorded in the ledger; the trace evaluator does not model it.
+
+## Run archiving and REVIEW.md validation
+
+`scripts/archive_run.py` writes one `.agent-review/runs/NNN/` directory. It copies
+worker results, gate results, and review files; copies every declared artifact and
+verifies its byte count and SHA-256 before and after the copy; rewrites archived paths
+relative to the run directory; validates each worker result, gate result, review JSON
+block (against its iteration's verdict and counts), and the run record (deferred phases,
+oracle strength, succession references, and the fail-closed exit after an incomplete
+worker); and only then moves the directory into place and, with `--delete-staging`,
+removes the staging directories. Exit 1 means nothing was archived and staging is
+untouched. Exit 3 means the archive is complete but staging cleanup failed; finish the
+cleanup instead of archiving again.
+
+`scripts/check_review_report.py` checks that a `REVIEW.md` ends with exactly one
+` ```json veriloop-report ` block conforming to `schemas/review-report.schema.json` and
+followed by nothing else, that runs are named `<work id>/run-NNN`, that its current
+state matches the latest run, that every deferred criterion is an open item, that
+warnings carry an `accept`/`issue`/`cleanup` disposition, that a `goal_met` report has
+no unresolved Failed finding and no failing last iteration, and, with `--run-json`, that
+each archived `run.json` matches a cited SHA-256 and exit reason.
+
+```bash
+python3 evals/test_archive_run.py
+python3 evals/test_review_report.py
+```
 
 This suite validates controller state, recorded identities, allowlisted fields, schemas,
 and executable fixture evidence. Because it does not call a model or control a host's

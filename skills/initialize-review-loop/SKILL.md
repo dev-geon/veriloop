@@ -43,6 +43,19 @@ Create or update .agent-review/config.json with this shape:
       }
     }
 
+Two optional keys may be added when the user asks for them:
+
+    {
+      "fallback_models": { "reviewer": "<exact model id>", "gate": "<exact model id>" },
+      "stall_minutes": 20
+    }
+
+`fallback_models` records substitutions the user authorizes in advance for a role whose
+configured model is unavailable or rate-limited; `run-review-loop` logs every use.
+Omit a role to keep "stop and ask" for it. `stall_minutes` is how long a worker may show
+no progress before it is treated as stalled (default 20). Never fill either key by
+guessing.
+
 Create .agent-review/ledger.json with {"findings": []} only when it is absent.
 Never overwrite an existing ledger.
 

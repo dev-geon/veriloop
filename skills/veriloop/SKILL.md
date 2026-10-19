@@ -39,8 +39,9 @@ isolated evaluation:
   target, confirmed specification, scope bounds, and risk focus.
 - Do not accept or request the developer's reasoning, fixer explanation, prior review
   reports, findings ledger, acceptance-check results, or gate probes.
-- Do not read `.agent-review/`, `REVIEW.md`, `PRD.md`, worker artifacts or outcome
-  histories, including through broad searches or displayed diffs. Use allowed paths.
+- Do not read `.agent-review/`, `REVIEW.md`, `PRD.md`, `DECISIONS.md`, worker artifacts
+  or outcome histories, including through broad searches or displayed diffs. Use
+  allowed paths.
 - Inspect the code and specification independently. Do not infer what another reviewer
   already checked.
 
@@ -122,6 +123,15 @@ endpoint, exported type, config key, DB field), find its callers and consumers w
 search tools and confirm each still works. Details and checklist:
 `references/regression.md`.
 
+When the specification declares an invariant oracle, review the oracle as part of this
+pass, because a weak oracle turns every later green result into a false assurance.
+Judge it from the target by reading and rerunning it, not from reported results: check
+that its reference does not share the code path under test in a way that would hide the
+defect, that the generator reaches the dimensions named in the risk focus, that
+normalization does not erase real differences, that the declared budget is what the
+committed command runs, and that each strength switch in the target makes the oracle
+fail when you turn it on.
+
 ### 3B. Performance — does this do more work than it needs to?
 
 Look for I/O inside loops, N+1 query patterns, sync-over-async, unbounded reads,
@@ -139,7 +149,9 @@ Details and a Cosmos DB deep-dive: `references/cost.md`.
 
 Naming, function size, nesting depth, dead code, comment quality, and the
 agent-specific smells (narration comments, defensive try/catch wrapping, speculative
-generality). Details: `references/readability.md`.
+generality). Comments that narrate review history (finding identifiers, run numbers,
+"fixed after review") are a Warning: state the requirement the code meets instead.
+Details: `references/readability.md`.
 
 ### 3E. Conventions — does this look like it belongs in this repository?
 
@@ -208,7 +220,10 @@ Rules for the report:
   target files; the controller owns persistence. For standalone review, persist the
   final report as `REVIEW.md` in the same directory as the confirmed
   spec (`IA.md`), including the fenced machine-readable JSON block; overwrite it on
-  a re-review of the same work. The conversation report remains the source of truth.
+  a re-review of the same work. If the existing `REVIEW.md` is a loop report (it
+  contains a `json veriloop-report` block), never overwrite or edit it; write the
+  standalone report beside it as `REVIEW-standalone.md` instead. The conversation
+  report remains the source of truth.
 
 ### Machine-readable result
 

@@ -41,6 +41,8 @@ EVENT_KEYS = {
     "gate": {"type", "actor", "brief_keys", "probe_metadata", "result"},
     "exit": {"type", "reason"},
 }
+OPTIONAL_EVENT_KEYS = {"acceptance": {"phase"}}
+ACCEPTANCE_PHASES = {"loop", "post_deploy", "manual"}
 SKILL_CONTRACTS = {
     "strict preflight before mutation": r"Before development, verify that the host can:",
     "unique reviewer and gate agents": r"unique internal subagent for every iteration reviewer and final gate",
@@ -57,6 +59,23 @@ SKILL_CONTRACTS = {
     "bounded worker envelope": r"entire UTF-8 worker result at or below 16 KiB",
     "verified artifact handoff": r"byte count and SHA-256 digest",
     "lazy artifact reads": r"Do not read artifacts into controller context on a successful path",
+    "loop-phase success": r"Only loop-phase criteria decide `goal_met`",
+    "never defer a loop check": r"Never relabel a loop-phase check as deferred",
+    "acceptance preflight before delegation": r"rerun the specification's acceptance\s+preflight",
+    "declared fallback only": r"Without a\s+declared fallback, stop and ask",
+    "issued temporary paths": r"Roles never choose their own paths",
+    "stalled worker handling": r"Treat a worker that shows no observable progress",
+    "authorized succession": r"A successor may continue the same assignment only after the user authorizes",
+    "recurring invariant escalation": r"stop repairing that invariant case by case",
+    "oracle strength": r"The oracle is not\s+accepted until it rediscovers all of them",
+    "scripted archive": r"scripts/archive_run\.py",
+    "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
+}
+DRAFT_SPEC_CONTRACTS = {
+    "acceptance phases": r"Give every criterion a phase",
+    "acceptance preflight": r"### Preflight every acceptance check",
+    "contract separate from history": r"### Keep the contract separate from its history",
+    "invariant oracle section": r"\*\*Invariant oracles\.\*\*",
 }
 
 
@@ -550,7 +569,8 @@ def validate_case(case: dict[str, Any]) -> None:
         event_type = event.get("type")
         label = f"{case_id}.events[{index}]"
         require(event_type in EVENT_KEYS, f"{label}: unknown event type {event_type!r}")
-        require(set(event) == EVENT_KEYS[event_type], f"{label}: event contains leaked or missing fields")
+        allowed_keys = EVENT_KEYS[event_type] | OPTIONAL_EVENT_KEYS.get(event_type, set())
+        require(EVENT_KEYS[event_type] <= set(event) <= allowed_keys, f"{label}: event contains leaked or missing fields")
 
         if unsupported and not can_run:
             require(event_type in {"authorization", "exit"}, f"{label}: action occurred before reduced-mode authorization")
@@ -617,7 +637,13 @@ def validate_case(case: dict[str, Any]) -> None:
             reviewed_revision = None
             snapshot_dirty = snapshot is not None
 
+        elif event_type == "acceptance" and event.get("phase", "loop") != "loop":
+            require(event["phase"] in ACCEPTANCE_PHASES, f"{label}: unknown acceptance phase")
+            require(event["result"] == "deferred", f"{label}: {event['phase']} acceptance must stay deferred inside the loop")
+            acceptances.append(event)
+
         elif event_type == "acceptance":
+            require(event["result"] != "deferred", f"{label}: loop-phase acceptance cannot be deferred")
             execute_fixture_check(
                 event["check"],
                 event["result"],
@@ -745,6 +771,7 @@ def validate_case(case: dict[str, Any]) -> None:
     else:
         require(relaxation["authorized"] is False, f"{case_id}: run claims unobserved authorization")
         require(relaxation["reason"] is None and relaxation["authorization"] is None, f"{case_id}: unauthorized relaxation metadata")
+    validate_run_extensions(run, exit_reason, case_id)
     if exit_reason == "goal_met":
         require(gate_status == "hold", f"{case_id}: goal met without a held gate")
         require(gate_revision == revision and not snapshot_dirty, f"{case_id}: goal met after the held target changed")
@@ -771,10 +798,44 @@ def validate_case(case: dict[str, Any]) -> None:
         require(exit_reason == required_worker_exit, f"{case_id}: incomplete worker did not control run exit")
 
 
+def validate_run_extensions(run: dict[str, Any], exit_reason: str | None, label: str) -> None:
+    """Semantic rules for the optional run.json fields added in 0.13.0."""
+    for item in run["acceptance"]:
+        phase = item.get("phase", "loop")
+        if item["result"] == "deferred":
+            require(phase != "loop", f"{label}: loop-phase acceptance archived as deferred")
+        else:
+            require(phase == "loop", f"{label}: {phase} acceptance must be archived as deferred")
+    for oracle in run.get("oracles", []):
+        strength = oracle["strength"]
+        require(strength["rediscovered"] <= strength["historical"], f"{label}: oracle {oracle['id']} rediscovered more than it had")
+        if exit_reason == "goal_met":
+            require(oracle["result"] == "pass", f"{label}: goal met with oracle {oracle['id']} not passing")
+            require(
+                strength["rediscovered"] == strength["historical"],
+                f"{label}: goal met with oracle {oracle['id']} missing historical failures",
+            )
+    # A stopped worker ends its run fail-closed; its successor runs in a follow-up run.
+    worker_files = set(run["worker_files"])
+    preceding = [entry.rstrip("/") + "/" for entry in run.get("preceding_runs", [])]
+    for succession in run.get("worker_successions", []):
+        require(succession["successor"] in worker_files, f"{label}: worker succession references an unarchived worker")
+        require(succession["predecessor"] not in worker_files, f"{label}: worker succession inside one run bypasses fail-closed exit")
+        require(
+            any(succession["predecessor"].startswith(prefix) for prefix in preceding),
+            f"{label}: succession predecessor is not archived in a preceding run",
+        )
+    for substitution in run.get("model_substitutions", []):
+        require(substitution["from"] != substitution["to"], f"{label}: model substitution changed nothing")
+
+
 def validate_skill_contracts() -> None:
     text = (ROOT / "skills" / "run-review-loop" / "SKILL.md").read_text(encoding="utf-8")
     for label, pattern in SKILL_CONTRACTS.items():
         require(re.search(pattern, text) is not None, f"run-review-loop skill lost contract: {label}")
+    draft = (ROOT / "skills" / "draft-spec" / "SKILL.md").read_text(encoding="utf-8")
+    for label, pattern in DRAFT_SPEC_CONTRACTS.items():
+        require(re.search(pattern, draft) is not None, f"draft-spec skill lost contract: {label}")
 
 
 def expect_rejected(case: dict[str, Any], mutation: str) -> None:
@@ -1253,6 +1314,71 @@ def run_reduced_transition_test(cases: list[dict[str, Any]]) -> int:
     return 1
 
 
+def run_extension_tests(cases: list[dict[str, Any]]) -> tuple[int, int]:
+    """Deferred acceptance phases, invariant oracles, and worker successions (0.13.0)."""
+    base = next(case for case in cases if case["id"] == "clean-diff-held-by-gate")
+
+    def with_deferred(phase: str, result: str) -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        event = {
+            "type": "acceptance",
+            "criterion": "post-deploy smoke",
+            "check": "observe the deployed service health endpoint",
+            "phase": phase,
+            "result": result,
+            "evidence": "deferred until deployment",
+        }
+        case["events"].insert(len(case["events"]) - 1, event)
+        case["run_result"]["acceptance"].append({key: value for key, value in event.items() if key != "type"})
+        return case
+
+    def with_oracle(result: str, historical: int, rediscovered: int) -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        case["run_result"]["oracles"] = [
+            {
+                "id": "incremental-equals-full",
+                "invariant": "windowed answers equal full-history answers",
+                "reference": "same implementation over the full history",
+                "generator": "seeded histories over every finding dimension",
+                "budget": "2000 seeds in loop",
+                "result": result,
+                "strength": {"historical": historical, "rediscovered": rediscovered},
+                "evidence": "fixture oracle summary",
+            }
+        ]
+        return case
+
+    def with_succession(predecessor: str | None, successor: str | None) -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        run["preceding_runs"] = [".agent-review/runs/004"]
+        run["worker_successions"] = [
+            {
+                "predecessor": predecessor or ".agent-review/runs/004/workers/developer-1.json",
+                "successor": successor or run["worker_files"][0],
+                "reason": "stalled: no progress for 20 minutes",
+                "authorization": "user approved succession in a follow-up run",
+            }
+        ]
+        return case
+
+    validate_case(with_deferred("post_deploy", "deferred"))
+    validate_case(with_oracle("pass", 3, 3))
+    validate_case(with_succession(None, None))
+    positives = 3
+
+    expect_rejected(with_deferred("loop", "deferred"), "loop-phase acceptance hidden as deferred")
+    expect_rejected(with_deferred("post_deploy", "pass"), "post-deploy acceptance claimed inside the loop")
+    expect_rejected(with_oracle("fail", 3, 3), "goal met with a failing oracle")
+    expect_rejected(with_oracle("pass", 3, 2), "goal met with an oracle that missed a historical failure")
+    expect_rejected(with_succession(None, "evals/fixtures/archives/not-archived.json"), "succession to an unarchived worker")
+    same_run = with_succession(None, None)
+    same_run["run_result"]["worker_successions"][0]["predecessor"] = same_run["run_result"]["worker_files"][0]
+    expect_rejected(same_run, "succession inside one run")
+    expect_rejected(with_succession("elsewhere/workers/developer-1.json", None), "succession from a run that is not preceding")
+    return positives, 7
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("cases", nargs="?", type=Path, default=DEFAULT_CASES)
@@ -1272,11 +1398,13 @@ def main() -> int:
     guard_count = 0 if args.no_guard_tests else run_guard_tests(cases)
     worker_positive_count, worker_guard_count = run_worker_contract_tests()
     fallback_positive_count, fallback_guard_count = run_worker_fallback_tests()
+    extension_positive_count, extension_guard_count = run_extension_tests(cases)
     print(
         f"\n{len(cases)} contract traces passed; {transition_count} authorized reduced transition passed; "
         f"{worker_exit_count} worker-exit transitions passed; {guard_count} guard mutations rejected; "
         f"{worker_positive_count} worker results passed; {worker_guard_count} worker-result mutations rejected; "
-        f"{fallback_positive_count} raw-JSON fallback paths passed; {fallback_guard_count} fallback guards rejected."
+        f"{fallback_positive_count} raw-JSON fallback paths passed; {fallback_guard_count} fallback guards rejected; "
+        f"{extension_positive_count} phase/oracle extensions passed; {extension_guard_count} extension guards rejected."
     )
     return 0
 
