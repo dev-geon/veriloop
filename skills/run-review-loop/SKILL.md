@@ -212,6 +212,13 @@ record, and record the reason and authorization in `run.json`. If not
 approved, exit with `blind_context_unavailable`. Never describe relaxed review as
 independent or blind.
 
+The controller owns the isolation claim. Do not ask a reviewer or gate to prove or
+attest its own context isolation. Record strict independence from the host delegation
+result (`fork_context: false`, a new internal agent identity, and the allowlisted
+brief) and stop only when the host cannot provide those guarantees or the role
+reports a real context leak. A role's inability to inspect host metadata is not a
+context leak and is not `blind_context_unavailable`.
+
 ## 5. Maintain the findings ledger
 
 Create .agent-review/ledger.json with {"findings": []} when absent.
@@ -306,6 +313,15 @@ reconciles findings and filters previously accepted warnings without exposing hi
 to the reviewer. Require the object to validate against
 `../../schemas/review-result.schema.json`; when the host supports native structured
 output, supply that schema to the reviewer.
+
+The review schema is exact. The final `json veriloop-review` object contains only
+`verdict` and `findings`; each finding contains only the fields defined by
+`review-result.schema.json`. Do not add role, status, checks, independence, blocker,
+or changed-files metadata to that object. Keep transport status, agent identity,
+strict-mode evidence, and blockers in the controller's run record. If the received
+object is schema-invalid, request one format-only correction from the same completed
+role without rerunning implementation or review; a second invalid result is a
+review failure. Never reinterpret an empty or malformed findings array as a pass.
 
 ### Check stop conditions in order
 
@@ -424,6 +440,13 @@ Require this object to validate against `../../schemas/gate-result.schema.json`;
 native structured output when the host supports it. A schema-invalid gate is blocked,
 not held. Each gate finding contains `severity: failed`, title, relative file, line
 (`0` when no single line applies), and captured evidence.
+
+The gate schema is also exact. The final `json veriloop-gate` object may contain only
+the fields defined by `gate-result.schema.json`; keep role, agent identity, transport
+status, and controller-only independence evidence out of the gate object. Validate
+the received object before interpreting its verdict. A format-only correction may be
+requested once from the same completed gate when the host supports it; do not rerun
+probes or modify the candidate for a formatting retry.
 
 On failure, add the finding to the controller-owned ledger and give the fixer only the
 failed invariant and minimal reproducible evidence; withhold passed probes and the
