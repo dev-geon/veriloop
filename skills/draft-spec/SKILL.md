@@ -83,6 +83,33 @@ settled anything.
   recommendation, and never re-ask what the codebase or the dialogue already
   answered.
 
+### Bring in the design partner while decisions are still open
+
+Do not wait until the draft is written to look for omissions. After the decision
+surface is enumerated and before the contract is drafted, dispatch a fresh `designer`
+subagent resolved from the `design_review_gate` model group. Give it only the grounded
+repository facts, the user's goal, the decision surface with each decision's current
+disposition, and explicit constraints. Do not give it a previous draft, review report,
+ledger, worker result, or gate material.
+
+The design partner is an active thinking partner, not a prose generator or an approval
+authority. Its response must:
+
+1. propose improvements and alternatives for load-bearing decisions, including the
+   problem, recommendation, trade-offs, and a concrete acceptance sentence;
+2. identify questions that require the user's domain or product judgment; and
+3. keep the interview to at most four questions per round, with a recommended choice
+   and the consequence of each option.
+
+Relay every proposal and question to the user. The controller must not silently adopt a
+design partner suggestion. Use the user's answers to close decisions, then dispatch a
+new fresh design partner for a coherence pass when answers changed the model or when a
+load-bearing decision remains open. Continue the bounded brainstorm/interview rounds
+until the decision surface is closed; if a decision remains unresolved, stop and ask
+the user instead of writing a guessed contract. The design partner may suggest a better
+scope, state model, error policy, acceptance check, or follow-up boundary, but the user
+confirms the resulting product decision.
+
 ## Step 3 — Draft the spec
 
 Draft only after Step 2's load-bearing decisions are closed. A spec written around
@@ -172,8 +199,10 @@ location with the user.
 
 The drafter cannot audit their own guesses — that is self-judgment. Before presenting
 the draft, dispatch **one fresh subagent** that did not author the spec (use the
-`gate` role's model from `.agent-review/config.json` when present; session model
-otherwise). Give it the draft, the enumerated decision surface with each decision's
+`gate` role's effective model from the `design_review_gate` group in
+`.agent-review/config.json` when present; session model otherwise). This guess-hunt
+agent must be distinct from every design partner used during the interview. Give it the
+draft, the enumerated decision surface with each decision's
 disposition and grounding, and read access to the code. Its brief is two questions:
 
 1. Is each decision's grounding real — did the user actually say or choose it, or

@@ -45,21 +45,43 @@ has moved. Do not let a worker discover it in the middle of a batch.
 Add a runtime smoke check when the specification covers a runnable service and the
 repository has a safe, inexpensive local start path.
 
-## 2. Load optional role configuration
+## 2. Load optional model-group configuration
 
-Read .agent-review/config.json when present. Supported roles are developer, fixer,
-reviewer, and gate. inherit, a missing role, or a missing file means the current
-session model. Apply configured reasoning efforts exactly as well; fail preflight
-if either the model or effort cannot be honored.
+Read `.agent-review/config.json` when present. The canonical groups are
+`design_review_gate` for `designer`, `reviewer`, and `gate`, and `worker` for
+`developer` and `fixer`. `designer` is used by `draft-spec` during the interactive
+specification stage; the other four roles are used by this loop. `inherit`, a missing
+group or role, or a missing file means the current session model. Apply the configured
+reasoning effort exactly as well; fail preflight if either the model or effort cannot be
+honored.
+
+Existing repositories may still provide the legacy `models` and `reasoning_efforts`
+maps keyed by `developer`, `fixer`, `reviewer`, and `gate`. Accept that shape without
+migration. When both shapes are present, an explicit legacy role entry overrides its
+group, and every role without that entry resolves from its group. A group fallback is
+resolved for all roles in that group; a role-specific fallback overrides it. In a
+legacy-only configuration, resolve `designer` from the legacy `reviewer` role, then
+the legacy `gate` role, before using the current session model so design, review, and
+gate remain one effective group by default.
+
+The effective model table must be recorded before delegation:
+
+| Role | Group | Use |
+|---|---|---|
+| designer | `design_review_gate` | user-facing design brainstorming and decision interview |
+| developer | `worker` | implementation |
+| fixer | `worker` | verified repair |
+| reviewer | `design_review_gate` | five-pass independent review |
+| gate | `design_review_gate` | holdout verification |
 
 When delegating, apply an exact configured model only if the host supports model
 overrides. If the configured model cannot be used, stop and ask rather than silently
 substituting another model. The user's configuration is authoritative.
 
-The configuration may declare `fallback_models` per role. A declared fallback is a
-substitution the user authorized in advance: when the configured model is unavailable
+The configuration may declare `fallback_models` per group or role. A declared fallback
+is a substitution the user authorized in advance: when the resolved model is unavailable
 or rate-limited, switch that role to its fallback and record the substitution (role,
-from, to, reason, authorization) in `run.json` `model_substitutions`. Without a
+group, from, to, reason, authorization) in `run.json` `model_substitutions`. Without a
 declared fallback, stop and ask. A substitution does not change the independence label;
 independence comes from context isolation, not from the model.
 
@@ -73,6 +95,7 @@ Keep each role to one responsibility and request only the capabilities it needs:
 | Role | Allowlisted input | Required output | Capability boundary |
 |---|---|---|---|
 | controller | full run state | run record and user report | orchestrate, run acceptance checks, write `.agent-review/`; never implement, review, or fix |
+| designer | repository facts, user goal, decision surface, explicit constraints | proposals, trade-offs, and interview questions | brainstorm and clarify the contract; never silently decide or edit target files |
 | developer | spec, goal, current batch, scope, checks | schema-valid worker result | read/write target and run required checks; no review history or gate material |
 | fixer | Failed findings or minimal gate failure packet | schema-valid worker result | read/write target and run required checks; no passed probes |
 | reviewer | strict-blind allowlist below | review result | read/search target and run safe checks; never write target or cause external side effects |

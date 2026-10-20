@@ -12,6 +12,16 @@ Use native structured output when the host supports it. Otherwise require raw JS
 validate it before reading the verdict. Never extract JSON from prose with a regular
 expression.
 
+## Model-group routing
+
+The canonical `.agent-review/config.json` may define a `design_review_gate` group for
+the `designer`, `reviewer`, and `gate` roles, and a separate `worker` group for the
+`developer` and `fixer` roles. The designer is used before the specification is
+written: it proposes improvements and interviews the user about unresolved decisions.
+Existing per-role `models` and `reasoning_efforts` maps remain compatible; an explicit
+role entry overrides its group. In a legacy-only file, `designer` follows `reviewer`,
+then `gate`, before using the current session model.
+
 ## Worker completion protocol
 
 Developer and fixer results use `worker-result.schema.json` so the controller can

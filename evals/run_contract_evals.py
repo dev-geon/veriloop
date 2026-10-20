@@ -44,6 +44,9 @@ EVENT_KEYS = {
 OPTIONAL_EVENT_KEYS = {"acceptance": {"phase"}}
 ACCEPTANCE_PHASES = {"loop", "post_deploy", "manual"}
 SKILL_CONTRACTS = {
+    "model groups": r"canonical groups are[\s\S]+?`design_review_gate`[\s\S]+?`worker`",
+    "legacy role configuration": r"legacy `models` and `reasoning_efforts`[\s\S]+?maps",
+    "legacy designer inheritance": r"legacy-only configuration, resolve `designer` from the legacy `reviewer` role",
     "strict preflight before mutation": r"Before development, verify that the host can:",
     "unique reviewer and gate agents": r"unique internal subagent for every iteration reviewer and final gate",
     "fresh reviewer per iteration": r"Create a new reviewer subagent for this iteration\. Never reuse",
@@ -72,6 +75,10 @@ SKILL_CONTRACTS = {
     "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
 }
 DRAFT_SPEC_CONTRACTS = {
+    "design partner before drafting": r"dispatch a fresh `designer`\s+subagent resolved from the `design_review_gate` model group",
+    "design partner interview": r"Relay every proposal and question to the user",
+    "design partner cannot decide silently": r"must not silently adopt a\s+design partner suggestion",
+    "guess hunt remains distinct": r"guess-hunt\s+agent must be distinct from every design partner",
     "acceptance phases": r"Give every criterion a phase",
     "acceptance preflight": r"### Preflight every acceptance check",
     "contract separate from history": r"### Keep the contract separate from its history",

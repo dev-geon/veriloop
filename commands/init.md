@@ -1,6 +1,6 @@
 ---
-description: Initialize Veriloop role models, strict blind mode, and findings state
-argument-hint: [optional role=model pairs]
+description: Initialize Veriloop model groups, strict blind mode, and findings state
+argument-hint: [optional design_review_gate=model worker=model or legacy role=model pairs]
 ---
 
 # Init

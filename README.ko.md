@@ -29,6 +29,19 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT 라이선스" /></a>
 </p>
 
+## 0.14.0 변경 사항
+
+이번 버전은 명세 작성을 일방적인 초안 생성에서 대화형 설계 단계로 확장합니다.
+
+- **명세 확정 과정에 설계 파트너가 참여합니다.**<br>
+  저장소와 결정 표면을 근거로 정리한 뒤, 새 `designer`가 `IA.md`를 쓰기 전에 개선안·대안·트레이드오프·실행 가능한 수용 문장을 제안합니다.<br>
+  controller는 한 라운드에 최대 네 개의 인터뷰 질문을 사용자에게 전달하고, 사용자의 결정을 반영한 뒤 모델이 바뀌었거나 결정이 남아 있으면 새 설계 파트너의 정합성 확인을 진행합니다. 설계 파트너는 제안하고 사용자가 확정합니다.
+- **설계·리뷰·게이트와 워커를 모델 그룹으로 나눕니다.**<br>
+  `.agent-review/config.json`에서 `designer`·`reviewer`·`gate`를 `design_review_gate` 그룹으로 묶고, `developer`·`fixer`를 별도의 `worker` 그룹으로 설정할 수 있습니다.<br>
+  기존 역할별 `models`·`reasoning_efforts` 설정도 계속 유효하므로 기존 저장소의 설정을 강제로 바꾸지 않습니다.
+- **최종 추측 탐색은 독립성을 유지합니다.**<br>
+  명세 확정 직전의 guess-hunt는 설계 파트너와 다른 새 에이전트를 사용해 근거가 없는 결정과 누락된 결정을 계속 확인합니다.
+
 ## 0.13.0 변경 사항
 
 같은 불변식이 계속 깨져 반복이 끝나지 않는 작업과, 루프 밖으로 밀려나던 검증·기록 관리를 다룹니다.
@@ -107,7 +120,7 @@ strict 전용 요청에서 컨텍스트 격리가 불가능하면 중단합니�
 ```mermaid
 flowchart TD
     Init["초기화 (선택)<br/>initialize-review-loop · /init"] --> State["엄격 블라인드 모드 + 모델 설정<br/>.agent-review/config.json"]
-    Draft["명세 확정<br/>draft-spec · /draft"] --> Spec["확정된 명세 · IA.md<br/>실행 가능한 인수 조건"]
+    Draft["설계 파트너 브레인스토밍 + 인터뷰<br/>draft-spec · /draft"] --> Spec["확정된 명세 · IA.md<br/>실행 가능한 인수 조건"]
     State --> Run["루프 실행<br/>run-review-loop · /work"]
     Spec --> Run
     Run --> Develop["1. 구현"]
@@ -128,13 +141,13 @@ flowchart TD
 
 | 단계 | Codex | Claude Code | 결과 |
 |---|---|---|---|
-| 0. 역할별 모델 설정 *(선택)* | `$initialize-review-loop` | `/init` | 엄격 블라인드 모드, 모델 설정, findings ledger |
+| 0. 모델 그룹 설정 *(선택)* | `$initialize-review-loop` | `/init` | 엄격 블라인드 모드, 그룹 설정, findings ledger |
 | 1. 작업 명세 확정 | `$draft-spec` | `/draft` | `IA.md` — 저장소 규칙과 실행 가능한 인수 조건이 포함된 명세 |
 | 2. 구현·리뷰·수정 실행 | `$run-review-loop <목표>` | `/work <목표>` | 검증된 변경, `REVIEW.md`의 최종 판정, 성공 시 `PRD.md` |
 
 ### 0. 루프 초기화 *(선택)*
 
-개발자·수정자·리뷰어·최종 게이트에 사용할 모델을 저장소별로 선택합니다.
+`design_review_gate` 그룹(`designer`·리뷰어·최종 게이트)과 `worker` 그룹(개발자·수정자)에 사용할 모델을 따로 선택합니다.
 
 ```text
 # Codex
@@ -144,13 +157,29 @@ $initialize-review-loop
 /init
 ```
 
-설정과 `"blind_mode": "strict"`는 `.agent-review/config.json`에 저장됩니다.<br>
+그룹 설정과 `"blind_mode": "strict"`는 `.agent-review/config.json`에 저장됩니다.<br>
 지정한 모델을 사용할 수 없으면 다른 모델로 몰래 대체하지 않고 루프를 중단합니다.
+
+```json
+{
+  "blind_mode": "strict",
+  "model_groups": {
+    "design_review_gate": { "model": "gpt-6-astra", "reasoning_effort": "medium" },
+    "worker": { "model": "gpt-6-luna", "reasoning_effort": "xhigh" }
+  }
+}
+```
+
+기존 역할별 `models`·`reasoning_efforts` 맵도 계속 지원합니다. 명시된 역할별 설정은
+그 역할에 우선 적용하고, 나머지 역할은 해당 그룹에서 해석합니다. 그룹 설정이 없는
+기존 파일에서는 `designer`가 `reviewer`, 그 다음 `gate` 설정을 이어받고, 둘 다
+없을 때만 현재 세션 모델을 사용합니다.
 
 ### 1. 명세 작성과 확인
 
-`draft-spec`은 저장소의 `AGENTS.md` / `CLAUDE.md`, 관련 코드, 테스트, 기존 패턴을 먼저 조사한 뒤 작업 명세를 만듭니다.<br>
-각 인수 조건에는 테스트 명령이나 검색 assertion처럼 **그대로 실행할 수 있는 확인 방법**이 연결됩니다.
+`draft-spec`은 저장소의 `AGENTS.md` / `CLAUDE.md`, 관련 코드, 테스트, 기존 패턴을 먼저 조사합니다.<br>
+계약을 쓰기 전에 설계 파트너가 개선안과 트레이드오프를 제안하고, 아직 정해지지 않은 제품 결정을 한 번에 최대 네 개의 질문으로 인터뷰합니다.<br>
+그 다음 각 인수 조건에 테스트 명령이나 검색 assertion처럼 **그대로 실행할 수 있는 확인 방법**을 연결해 작업 명세를 만듭니다.
 
 ```text
 # Codex
@@ -160,7 +189,7 @@ $draft-spec 차량별 연료 합계 API를 추가해줘
 /draft 차량별 연료 합계 API를 추가해줘
 ```
 
-독립적인 guess-hunt 검토로 초안에서 근거 없이 가정한 결정을 찾아냅니다.<br>
+설계 파트너와 다른 새 에이전트가 독립적인 guess-hunt 검토를 수행해 초안에서 근거 없이 가정한 결정과 누락된 결정을 찾아냅니다.<br>
 사용자가 명세를 확인하기 전에는 구현 루프가 시작되지 않습니다.
 
 ### 2. 목표와 함께 루프 실행

@@ -29,6 +29,19 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.14.0
+
+This release makes specification work an interactive design step instead of a one-way draft.
+
+- **Bring a design partner into specification confirmation.**<br>
+  After the repository and decision surface are grounded, a fresh `designer` proposes improvements, alternatives, trade-offs, and executable acceptance sentences before `IA.md` is written.<br>
+  The controller relays up to four interview questions per round, records the user's decisions, and repeats a fresh coherence pass when those decisions change the model. The design partner suggests; the user confirms.
+- **Configure model groups for design, review, gate, and workers.**<br>
+  `.agent-review/config.json` can assign one `design_review_gate` group to `designer`, `reviewer`, and `gate`, and a separate `worker` group to `developer` and `fixer`.<br>
+  Existing per-role `models` and `reasoning_efforts` configurations remain valid, so repositories can adopt groups without rewriting current state.
+- **Keep the final guess hunt independent.**<br>
+  The pre-confirmation guess-hunt uses a fresh agent distinct from every design partner and continues to check grounding and missing decisions.
+
 ## Changes in 0.13.0
 
 This release targets work that never converges because the same invariant keeps failing, and verification or record keeping that used to slip outside the loop.
@@ -105,7 +118,7 @@ They do not migrate existing run archives or imply a measured token-savings perc
 ```mermaid
 flowchart TD
     Init["Initialize (optional)<br/>initialize-review-loop · /init"] --> State["Strict blind mode + model routing<br/>.agent-review/config.json"]
-    Draft["Confirm specification<br/>draft-spec · /draft"] --> Spec["Confirmed specification · IA.md<br/>Executable acceptance checks"]
+    Draft["Design partner brainstorm + interview<br/>draft-spec · /draft"] --> Spec["Confirmed specification · IA.md<br/>Executable acceptance checks"]
     State --> Run["Run the loop<br/>run-review-loop · /work"]
     Spec --> Run
     Run --> Develop["1. Develop"]
@@ -126,13 +139,14 @@ If there is no confirmed specification, it routes to `draft-spec` first instead 
 
 | Step | Codex | Claude Code | Output |
 |---|---|---|---|
-| 0. Configure role models *(optional)* | `$initialize-review-loop` | `/init` | Strict blind mode, model routing, and findings ledger |
+| 0. Configure model groups *(optional)* | `$initialize-review-loop` | `/init` | Strict blind mode, group routing, and findings ledger |
 | 1. Confirm the work specification | `$draft-spec` | `/draft` | `IA.md` — a repository-grounded spec with executable acceptance checks |
 | 2. Develop, review, and repair | `$run-review-loop <goal>` | `/work <goal>` | Verified changes, a final verdict in `REVIEW.md`, and `PRD.md` on success |
 
 ### 0. Initialize the loop *(optional)*
 
-Choose the model used for each role: developer, fixer, reviewer, and final gate.
+Choose the model for the `design_review_gate` group (`designer`, reviewer, and final gate)
+separately from the `worker` group (`developer` and fixer).
 
 ```text
 # Codex
@@ -142,12 +156,28 @@ $initialize-review-loop
 /init
 ```
 
-The selection and `"blind_mode": "strict"` are stored in `.agent-review/config.json`.<br>
+The group selection and `"blind_mode": "strict"` are stored in `.agent-review/config.json`.<br>
 If a configured model is unavailable, the loop stops instead of silently substituting another one.
+
+```json
+{
+  "blind_mode": "strict",
+  "model_groups": {
+    "design_review_gate": { "model": "gpt-6-astra", "reasoning_effort": "medium" },
+    "worker": { "model": "gpt-6-luna", "reasoning_effort": "xhigh" }
+  }
+}
+```
+
+The previous per-role `models` and `reasoning_efforts` maps remain supported. An
+explicit legacy role entry wins for that role; other roles resolve from their group.
+In a legacy-only file, `designer` follows `reviewer`, then `gate`, before falling back
+to the current session model.
 
 ### 1. Draft and confirm the specification
 
 `draft-spec` first inspects the repository's `AGENTS.md` / `CLAUDE.md`, relevant code, tests, and established patterns.<br>
+Before writing the contract, its design partner proposes improvements and trade-offs and interviews you about unresolved product decisions in rounds of at most four questions.<br>
 It then writes a work specification in which every acceptance criterion is paired with a command that can actually verify it, such as a test or a grep assertion.
 
 ```text
@@ -158,7 +188,7 @@ $draft-spec add a per-vehicle fuel total API
 /draft add a per-vehicle fuel total API
 ```
 
-Before you confirm the draft, an independent guess-hunt review looks for decisions that were assumed rather than grounded in the repository or your intent.<br>
+Before you confirm the draft, an independent guess-hunt review, using a fresh agent separate from the design partner, looks for decisions that were assumed rather than grounded in the repository or your intent.<br>
 The implementation loop does not start until you confirm the specification.
 
 ### 2. Run the loop with an explicit goal
