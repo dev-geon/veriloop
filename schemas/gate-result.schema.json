@@ -54,13 +54,53 @@
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["severity", "title", "file", "line", "evidence"],
+      "required": ["severity", "title", "file", "line", "evidence", "repair_plan"],
       "properties": {
         "severity": { "const": "failed" },
         "title": { "type": "string", "minLength": 1 },
         "file": { "type": "string", "minLength": 1 },
         "line": { "type": "integer", "minimum": 0 },
-        "evidence": { "type": "string", "minLength": 1 }
+        "evidence": { "type": "string", "minLength": 1 },
+        "repair_plan": { "$ref": "#/$defs/repair_plan" }
+      }
+    },
+    "repair_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invariant",
+        "root_cause",
+        "affected_paths",
+        "implementation_steps",
+        "verification_cases",
+        "non_goals"
+      ],
+      "properties": {
+        "invariant": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "root_cause": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "affected_paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        },
+        "implementation_steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "verification_cases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "non_goals": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
       }
     }
   }

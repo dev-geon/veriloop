@@ -29,6 +29,21 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.15.0
+
+This release carries the strongest design and review model's analysis to the worker as an executable repair design.
+
+- **The design partner produces an implementation design from the existing code.**<br>
+  During `draft`, the `designer` reads repository rules and the affected code, then proposes the current boundaries, affected symbols and data contracts, state and validation rules, implementation seams, verification cases, and non-goals.<br>
+  The user closes the decisions, and the accepted design is carried into `IA.md` as the contract.
+- **Reviewers provide diagnosis and repair design together.**<br>
+  Every finding includes a bounded `repair_plan` with the invariant, root cause, affected paths, implementation steps, verification cases, and non-goals.<br>
+  Reviewers remain read-only; the worker compares the plan with the specification and current code before implementing it.
+- **Gate failures use the same design contract.**<br>
+  When a holdout probe finds a new Failed issue, the gate creates an evidence-grounded `repair_plan`, and the controller sends only that plan and minimal evidence to the fixer without passing probes or unrelated gate reasoning.
+- **Codex and Claude Code share the contract.**<br>
+  `$draft` and `/draft`, `$run-review-loop` and `/work`, and the review and gate JSON schemas all use the same `repair_plan` rules.
+
 ## Changes in 0.14.0
 
 This release makes specification work an interactive design step instead of a one-way draft.

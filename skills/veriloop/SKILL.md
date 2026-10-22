@@ -193,7 +193,9 @@ Write the report in the language the user is conversing in. Use this structure:
 #### [Failed] <title>             ← must be fixed before this lands: broken behavior,
                                     silent data corruption, unbounded cost growth,
                                     serious performance defect, written-rule violation
-<file>:<line> — evidence, why it fails, suggested fix. (Confirmed / Needs verification)
+<file>:<line> — evidence, why it fails, suggested fix, and a compact repair plan
+covering the invariant, root cause, affected paths, implementation steps, verification
+cases, and non-goals. (Confirmed / Needs verification)
 
 #### [Warning] <title>            ← should be considered, does not block: readability,
                                     convention drift, missed cheap optimization
@@ -248,7 +250,15 @@ extract JSON from prose.
       "file": "relative/path",
       "line": 0,
       "confidence": "confirmed | needs_verification",
-      "fix_hint": "one-line suggested fix"
+      "fix_hint": "one-line suggested fix",
+      "repair_plan": {
+        "invariant": "the behavior that must remain true",
+        "root_cause": "why the current code violates it",
+        "affected_paths": ["relative/path.dart:Symbol"],
+        "implementation_steps": ["Validate the command identity before accepting the response"],
+        "verification_cases": ["Contradictory response remains outcomeUnknown"],
+        "non_goals": ["Do not change the public command shape"]
+      }
     }
   ]
 }
@@ -257,5 +267,6 @@ extract JSON from prose.
 Rules: `verdict` and `findings` must match the prose exactly when prose is present
 (same count, same severities, same titles). A passing review has `"findings": []`;
 `pass_with_warnings` contains warnings only; `fail` contains at least one Failed
-finding. If native schema validation rejects the result, correct the result instead of
-loosening the schema or inferring a verdict.
+finding. Every finding must include a schema-valid `repair_plan`; do not replace it
+with an unbounded transcript or a generated patch. If native schema validation rejects
+the result, correct the result instead of loosening the schema or inferring a verdict.

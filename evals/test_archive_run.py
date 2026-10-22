@@ -182,7 +182,9 @@ with tempfile.TemporaryDirectory() as tmp:
     expect_rejected('review without a JSON block', 'no machine-readable JSON block', review_value='# Iteration 1\n\nNo findings.\n')
     expect_rejected('review verdict disagrees with the iteration', 'verdict disagrees with its review',
                     review_value='# Iteration 1\n\n```json\n{"verdict": "fail", "findings": [{"severity": "failed", "title": "t", '
-                                 '"file": "a.py", "line": 1, "confidence": "confirmed", "fix_hint": "f"}]}\n```\n')
+                                 '"file": "a.py", "line": 1, "confidence": "confirmed", "fix_hint": "f", '
+                                 '"repair_plan": {"invariant": "i", "root_cause": "r", "affected_paths": ["a.py"], '
+                                 '"implementation_steps": ["s"], "verification_cases": ["v"], "non_goals": []}}]}\n```\n')
     bad = copy.deepcopy(run); bad['oracles'][0]['result'] = 'blocked'
     expect_rejected('goal_met with a blocked oracle', 'not passing', run_value=bad)
     bad = copy.deepcopy(run); bad['model_substitutions'][0]['to'] = 'model-a'

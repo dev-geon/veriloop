@@ -93,12 +93,18 @@ disposition, and explicit constraints. Do not give it a previous draft, review r
 ledger, worker result, or gate material.
 
 The design partner is an active thinking partner, not a prose generator or an approval
-authority. Its response must:
+authority. Because it has the `design_review_gate` model, it must use the repository
+facts it inspected to produce a **verifiable implementation design**, not only a list
+of questions. Its response must:
 
-1. propose improvements and alternatives for load-bearing decisions, including the
+1. state the current code and contract boundary it relied on, with `file:line` evidence;
+2. propose improvements and alternatives for load-bearing decisions, including the
    problem, recommendation, trade-offs, and a concrete acceptance sentence;
-2. identify questions that require the user's domain or product judgment; and
-3. keep the interview to at most four questions per round, with a recommended choice
+3. provide an implementation design for the proposed target behavior: affected
+   symbols and data/API boundaries, state or validation rules, ordered implementation
+   seams, verification cases, and explicit non-goals;
+4. identify questions that require the user's domain or product judgment; and
+5. keep the interview to at most four questions per round, with a recommended choice
    and the consequence of each option.
 
 Relay every proposal and question to the user. The controller must not silently adopt a
@@ -108,7 +114,11 @@ load-bearing decision remains open. Continue the bounded brainstorm/interview ro
 until the decision surface is closed; if a decision remains unresolved, stop and ask
 the user instead of writing a guessed contract. The design partner may suggest a better
 scope, state model, error policy, acceptance check, or follow-up boundary, but the user
-confirms the resulting product decision.
+confirms the resulting product decision. Once confirmed, carry the accepted
+implementation design into `IA.md` as target behavior, constraints, acceptance
+criteria, and risk focus. The design packet is an implementation aid and
+evidence-backed contract; it is not permission for the designer to edit target files
+or silently settle an open product decision.
 
 ## Step 3 — Draft the spec
 

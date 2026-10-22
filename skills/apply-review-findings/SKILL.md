@@ -38,7 +38,10 @@ just ran in this conversation, or — by convention — the `REVIEW.md` file bes
 work's `IA.md`). Prefer the machine-readable JSON block at the end of an
 `veriloop` report; fall back to parsing the prose findings. For each finding
 capture: severity, title, file/line, the evidence (the caller that breaks, the query
-that fans out), and the suggested fix.
+that fans out), the suggested fix, and the structured `repair_plan` when present. A
+legacy report without a repair plan may be used only after the fixer derives the
+missing plan from the specification and code before editing; new Veriloop review
+results must contain one.
 
 If there is no review report at all, say so and stop — running a review first is the
 `veriloop` skill's job, not this one's.
@@ -71,11 +74,14 @@ refactoring out of scope. Minimal edits mean a coherent root-cause repair, not a
 isolated patch for each symptom. For each causal group:
 
 1. Read the full file (not just the cited line) and the finding's evidence.
-2. When practical, reproduce failure with a regression check before editing; repair
-   the cause and verify both that check and adjacent affected normal paths. Make the
-   smallest coherent edit that resolves the evidence. Prefer the review's
-   `fix_hint`/suggested fix; deviate only when the hint is wrong for the code you see,
-   and say so.
+2. When practical, reproduce failure with a regression check before editing. Read the
+   repair plan as an implementation design: verify its invariant and root cause
+   against the specification and current code, then follow its affected paths and
+   implementation steps. Repair the cause and verify every stated verification case
+   plus adjacent affected normal paths. Make the smallest coherent edit that resolves
+   the evidence. Prefer the review's `repair_plan` and `fix_hint`; deviate only when
+   the plan is disproved by the code or specification, and say so in the worker
+   result.
 3. Follow the repository's conventions — the review's convention findings tell you the
    local dialect (Result vs exceptions, repository layering, naming). A fix written in
    the wrong dialect just becomes next round's finding.

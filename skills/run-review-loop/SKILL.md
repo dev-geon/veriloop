@@ -95,11 +95,11 @@ Keep each role to one responsibility and request only the capabilities it needs:
 | Role | Allowlisted input | Required output | Capability boundary |
 |---|---|---|---|
 | controller | full run state | run record and user report | orchestrate, run acceptance checks, write `.agent-review/`; never implement, review, or fix |
-| designer | repository facts, user goal, decision surface, explicit constraints | proposals, trade-offs, and interview questions | brainstorm and clarify the contract; never silently decide or edit target files |
+| designer | repository facts, user goal, decision surface, explicit constraints | proposals, trade-offs, verifiable implementation design, and interview questions | brainstorm and clarify the contract; never silently decide or edit target files |
 | developer | spec, goal, current batch, scope, checks | schema-valid worker result | read/write target and run required checks; no review history or gate material |
 | fixer | Failed findings or minimal gate failure packet | schema-valid worker result | read/write target and run required checks; no passed probes |
-| reviewer | strict-blind allowlist below | review result | read/search target and run safe checks; never write target or cause external side effects |
-| gate | reviewer allowlist plus snapshot | gate result | read/search frozen target and use isolated temporary tests; never write target or fix |
+| reviewer | strict-blind allowlist below | review result with a repair plan for every finding | read/search target and run safe checks; never write target or cause external side effects |
+| gate | reviewer allowlist plus snapshot | gate result with a repair plan for every Failed finding | read/search frozen target and use isolated temporary tests; never write target or fix |
 
 Use host-enforced read/write or tool allowlists when available. Otherwise state the
 same boundary in the role brief; strict blind mode still describes context isolation,
@@ -331,9 +331,13 @@ reviewer and gate reads, searches and displayed diffs. Use explicit allowed path
 by filtering already-displayed history is not isolation. If forbidden context leaks into the brief, discard that review and
 start a clean reviewer; if that cannot be done, return to the strict-mode preflight.
 
-Require the prose report and final machine-readable JSON block. The controller then
-reconciles findings and filters previously accepted warnings without exposing history
-to the reviewer. Require the object to validate against
+Require the prose report and final machine-readable JSON block. For every finding, the
+reviewer must provide a compact, code-grounded `repair_plan` containing the violated
+invariant, root cause, affected paths, ordered implementation steps, verification
+cases, and non-goals. The plan is a design contract for the fixer, not a patch: the
+fixer must compare it with the confirmed specification and current code before
+implementing it. The controller then reconciles findings and filters previously
+accepted warnings without exposing history to the reviewer. Require the object to validate against
 `../../schemas/review-result.schema.json`; when the host supports native structured
 output, supply that schema to the reviewer.
 
@@ -462,7 +466,7 @@ Require a final machine-readable gate block:
 Require this object to validate against `../../schemas/gate-result.schema.json`; use
 native structured output when the host supports it. A schema-invalid gate is blocked,
 not held. Each gate finding contains `severity: failed`, title, relative file, line
-(`0` when no single line applies), and captured evidence.
+(`0` when no single line applies), captured evidence, and a bounded `repair_plan`.
 
 The gate schema is also exact. The final `json veriloop-gate` object may contain only
 the fields defined by `gate-result.schema.json`; keep role, agent identity, transport
@@ -472,8 +476,8 @@ requested once from the same completed gate when the host supports it; do not re
 probes or modify the candidate for a formatting retry.
 
 On failure, add the finding to the controller-owned ledger and give the fixer only the
-failed invariant and minimal reproducible evidence; withhold passed probes and the
-rest of the gate's reasoning. After fixing and blind review, create another entirely
+Failed finding's invariant, minimal reproducible evidence, and its `repair_plan`;
+withhold passed probes and the rest of the gate's reasoning. After fixing and blind review, create another entirely
 new gate that generates new probes. Continue within the same three-iteration limit.
 
 Warnings never keep the loop running by themselves.
@@ -481,15 +485,17 @@ Warnings never keep the loop running by themselves.
 ### Fix
 
 When failed findings remain, delegate the bundled apply-review-findings skill with
-the Failed findings with minimal evidence, confirmed specification, risk focus,
-and only the relevant ledger identities/dispositions. Loop mode overrides the
+the Failed findings, their repair plans, minimal evidence, confirmed specification,
+risk focus, and only the relevant ledger identities/dispositions. Loop mode overrides the
 standalone reporting behavior of that skill: the fixer returns worker JSON only and
 does not edit review reports or controller records. Require minimal
 edits and verification against each finding's evidence. Then review again in a fresh
 context.
 
 For a blind-gate failure, pass only the minimal failure packet defined above, not the
-full gate report. Never let the fixer read passed holdout probes.
+full gate report. Never let the fixer read passed holdout probes. The fixer may reject
+or adapt a repair plan when the specification or current code disproves an assumption,
+but must preserve the finding's invariant and verify every stated verification case.
 
 Validate the fixer result with the same worker protocol. Review the repaired target in
 a fresh context only after a semantically valid `completed` result and passing

@@ -29,6 +29,21 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT 라이선스" /></a>
 </p>
 
+## 0.15.0 변경 사항
+
+이번 버전은 강력한 설계·리뷰 모델의 분석을 워커에게 실행 가능한 해결 설계로 전달합니다.
+
+- **설계 파트너가 기존 코드를 근거로 구현 설계를 만듭니다.**<br>
+  `draft` 단계의 `designer`는 저장소 규칙과 관련 코드를 읽은 뒤 현재 경계, 영향받는 심볼과 데이터 계약, 상태·검증 규칙, 구현 순서, 검증 사례와 제외 범위를 제안합니다.<br>
+  이 설계는 사용자의 브레인스토밍·인터뷰와 확정을 거쳐 `IA.md`의 계약으로 반영됩니다.
+- **리뷰어가 진단과 해결 설계를 함께 제공합니다.**<br>
+  각 finding에는 불변식, 근본 원인, 영향 경로, 구현 단계, 검증 사례와 non-goals를 담은 bounded `repair_plan`이 포함됩니다.<br>
+  리뷰어는 코드를 수정하지 않으며, 워커가 명세와 현재 코드를 대조해 계획을 검증한 뒤 구현합니다.
+- **게이트 실패도 동일한 설계 계약으로 전달합니다.**<br>
+  holdout probe가 새 Failed를 발견하면 gate가 근거 기반 `repair_plan`을 만들고, controller는 통과한 probe나 나머지 gate 추론을 노출하지 않은 채 해당 계획과 최소 근거만 fixer에게 전달합니다.
+- **Codex와 Claude Code가 같은 계약을 사용합니다.**<br>
+  `$draft`·`/draft`, `$run-review-loop`·`/work` 및 리뷰·게이트 JSON 스키마가 같은 `repair_plan` 규칙을 따릅니다.
+
 ## 0.14.0 변경 사항
 
 이번 버전은 명세 작성을 일방적인 초안 생성에서 대화형 설계 단계로 확장합니다.

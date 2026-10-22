@@ -1,7 +1,7 @@
 {
   "name": "veriloop",
-  "version": "0.14.0",
-  "description": "Review agent-produced code changes and run a strict-blind, specification-grounded develop-review-fix loop.",
+  "version": "0.15.0",
+  "description": "Review agent-produced code changes, produce evidence-grounded repair designs, and run a strict-blind, specification-grounded develop-review-fix loop.",
   "author": {
     "name": "bgun42",
     "url": "https://github.com/bgun42"
@@ -14,7 +14,7 @@
   "interface": {
     "displayName": "Veriloop",
     "shortDescription": "Strict-blind code review and repair loops",
-    "longDescription": "Review code changes across regression, performance, metered-service cost, readability, and repository conventions. Draft missing specifications, apply verified findings, and run a bounded develop-review-fix loop with unique blind reviewers and late-bound holdout gates.",
+    "longDescription": "Review code changes across regression, performance, metered-service cost, readability, and repository conventions. Draft repository-grounded implementation designs, carry verified repair plans to workers, apply findings, and run a bounded develop-review-fix loop with unique blind reviewers and late-bound holdout gates.",
     "developerName": "bgun42",
     "category": "Developer Tools",
     "capabilities": ["Interactive", "Write", "Code review"],

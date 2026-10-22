@@ -12,6 +12,13 @@ Use native structured output when the host supports it. Otherwise require raw JS
 validate it before reading the verdict. Never extract JSON from prose with a regular
 expression.
 
+Every review finding and every Failed gate finding carries a bounded `repair_plan`.
+It records the invariant, root cause, affected paths, implementation steps,
+verification cases, and non-goals that the worker must check against the current code
+and confirmed specification before editing. The plan is intentionally structured and
+bounded; it is a repair design, not a generated patch or a replacement for worker
+verification.
+
 ## Model-group routing
 
 The canonical `.agent-review/config.json` may define a `design_review_gate` group for
