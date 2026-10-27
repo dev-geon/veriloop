@@ -86,7 +86,9 @@ missed a historical failure, a succession to an unarchived worker, a succession 
 one run (which would bypass the fail-closed worker exit), and a succession from a run
 that is not listed in `preceding_runs`. It also checks that the run-review-loop and
 draft-spec instructions still contain the preflight, phase, oracle, stall, succession,
-temporary-path, archive, and report-block rules.
+temporary-path, archive, and report-block rules, and the requirement-quality rules
+(non-functional lens, permanent `AC-<n>` identifiers, one outcome per criterion, and the
+guess-hunt contradiction check).
 
 The trace model detects no progress by finding identity (file and title) and failed
 counts. Recurrence of the same invariant under a different title is a controller

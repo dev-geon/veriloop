@@ -17,7 +17,9 @@ Before changing code, record:
    API contract. Pass its path to every worker and reviewer.
 2. Goal: one or two sentences describing the finished state.
 3. Executable acceptance criteria: pair every criterion with an exact command or
-   observable assertion. Capture exit codes and relevant output.
+   observable assertion. Capture exit codes and relevant output. When the specification
+   numbers its criteria (`AC-<n>`), start every recorded `criterion` with that
+   identifier.
 4. Scope bounds: behavior, interfaces, storage formats, and modules that must not
    change.
 
@@ -596,9 +598,9 @@ A checklist of acceptance criteria is not a product document. Write these, in th
   numbers or the behaviour. State the assumptions and where they are approximations.
 - **Non-functional properties** — determinism, honesty about missing data, accessibility,
   performance, permissions, language, whatever the work actually commits to.
-- **Verification** — every acceptance criterion from `IA.md` with its Pass/Fail and the
-  evidence that settled it, plus the commands or runs that produced that evidence. This
-  is **one chapter, not the document**.
+- **Verification** — every acceptance criterion from `IA.md`, by its identifier, with
+  its Pass/Fail and the evidence that settled it, plus the commands or runs that
+  produced that evidence. This is **one chapter, not the document**.
 - **What remains** — accepted warnings, deferred items, known defects and inconsistencies
   with their disposition, and follow-up work with its owner or ticket. Record a
   discrepancy you could not resolve as a discrepancy; do not quietly drop it.

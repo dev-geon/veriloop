@@ -29,6 +29,25 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.16.0
+
+This release checks that every role reads the specification the same way before the loop starts.
+
+- **Specification statements follow requirement-quality rules.**<br>
+  A new `skills/draft-spec/references/requirement-quality.md` holds the rules, adapted from the requirement characteristics in ISO/IEC/IEEE 29148 and written as veriloop's own reference so Codex and Claude Code apply the same text.<br>
+  The rules cover scope, target behavior, constraints, acceptance criteria, and invariant oracles; current behavior is still judged by its `file:line` grounding.
+- **Acceptance criteria get permanent identifiers and one outcome each.**<br>
+  Every criterion is numbered `AC-<n>`; a removed criterion retires its number, which is never reused or renumbered.<br>
+  A criterion states one observable outcome, so a failure points at one requirement and the repair plan stays bounded. Run records and the `PRD.md` verification chapter cite criteria by identifier.
+- **Open thresholds become decisions.**<br>
+  Words such as "fast", "etc.", "if possible", or "improved" are replaced with a bound, a complete set, or a reference behavior. When that needs a value the dialogue has not settled, it goes back to the user as a decision instead of a wording fix.
+- **The decision surface adds a non-functional lens.**<br>
+  Performance and cost bounds, permissions, and reliability under failure are enumerated only where the work touches them, and a committed property becomes a criterion with a check. Specifications for work that commits to none get no extra section.
+- **The guess-hunt also looks for contradictions.**<br>
+  Its third question asks whether sections contradict each other, or whether a criterion joins outcomes or leaves its threshold open, in a way that would let two readers build or judge different behavior. Wording taste is not reported.
+
+Criterion priority is not part of this release. Local contract checks now also guard these four rules.
+
 ## Changes in 0.15.0
 
 This release carries the strongest design and review model's analysis to the worker as an executable repair design.
@@ -203,7 +222,7 @@ $draft-spec add a per-vehicle fuel total API
 /draft add a per-vehicle fuel total API
 ```
 
-Before you confirm the draft, an independent guess-hunt review, using a fresh agent separate from the design partner, looks for decisions that were assumed rather than grounded in the repository or your intent.<br>
+Before you confirm the draft, an independent guess-hunt review, using a fresh agent separate from the design partner, looks for decisions that were assumed rather than grounded in the repository or your intent, and for sections that contradict each other or criteria whose threshold is left open.<br>
 The implementation loop does not start until you confirm the specification.
 
 ### 2. Run the loop with an explicit goal

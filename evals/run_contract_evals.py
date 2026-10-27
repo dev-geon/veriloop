@@ -87,6 +87,10 @@ DRAFT_SPEC_CONTRACTS = {
     "acceptance preflight": r"### Preflight every acceptance check",
     "contract separate from history": r"### Keep the contract separate from its history",
     "invariant oracle section": r"\*\*Invariant oracles\.\*\*",
+    "non-functional lens": r"\*\*non-functional\*\* \(performance and cost bounds",
+    "permanent criterion identifiers": r"permanent `AC-<n>` identifier that is never renumbered or reused",
+    "one outcome per criterion": r"State one\s+observable outcome per criterion",
+    "guess hunt checks contradictions": r"Do the committed sections contradict each other",
 }
 
 

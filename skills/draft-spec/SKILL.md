@@ -62,11 +62,13 @@ settled anything.
 - Restate the goal in terms of the actual files, symbols, and behaviors found in
   Step 1 — a goal that talks about real code is already half a spec.
 - **Enumerate the decision surface** — the load-bearing decisions this work is
-  obligated to answer. Walk four lenses over each entity the work touches and each
+  obligated to answer. Walk five lenses over each entity the work touches and each
   colliding pair: **structural** (cardinality, composition, identity), **behavioral**
   (lifecycle, concurrency, failure policy, edge cases), **technical** (persistence,
   interfaces, consistency), **contract** (status/enum sets, uniqueness, output
-  shapes). Enumerate exhaustively; you will ask minimally.
+  shapes), **non-functional** (performance and cost bounds, permissions, reliability
+  under failure — only where the work touches them; see
+  `references/requirement-quality.md`). Enumerate exhaustively; you will ask minimally.
 - Resolve each enumerated decision by where the knowledge lives — never by silent
   default:
   - the code answers it → look it up (Step 1), don't ask;
@@ -137,7 +139,7 @@ Use this structure:
 ## Current behavior          ← what the code does today, file:line grounded
 ## Target behavior           ← what it must do when this work is done
 ## Constraints               ← repo conventions and workflow that apply; what must NOT change
-## Acceptance criteria       ← each criterion paired with an executable check and a phase
+## Acceptance criteria       ← each criterion an AC-<n> ID, one outcome, an executable check, a phase
 ## Invariant oracles         ← only when correctness spans a large input space (see below)
 ## Risks & edge cases
 ## Risk focus                ← the ONE area where this change fails worst
@@ -148,6 +150,13 @@ Acceptance criteria follow the same rule as the loop's goal contract: every crit
 is paired with the exact check that verifies it (a test command, a grep assertion, a
 build, an HTTP call). A criterion with no runnable check is a taste judgment — sharpen
 it or move it out.
+
+Hold the committed statements to `references/requirement-quality.md`. Give every
+criterion a permanent `AC-<n>` identifier that is never renumbered or reused. State one
+observable outcome per criterion, so a failure points at one requirement. Replace words
+that leave a threshold open with a bound, a complete set, or a named reference behavior;
+a replacement that needs a value the dialogue has not settled is an open decision, not a
+wording fix.
 
 Give every criterion a phase: `loop` (default; verified before the change lands),
 `post_deploy` (needs the deployed or real environment), or `manual` (a human
@@ -213,12 +222,17 @@ the draft, dispatch **one fresh subagent** that did not author the spec (use the
 `.agent-review/config.json` when present; session model otherwise). This guess-hunt
 agent must be distinct from every design partner used during the interview. Give it the
 draft, the enumerated decision surface with each decision's
-disposition and grounding, and read access to the code. Its brief is two questions:
+disposition and grounding, `references/requirement-quality.md`, and read access to the
+code. Its brief is three questions:
 
 1. Is each decision's grounding real — did the user actually say or choose it, or
    was it rubber-stamped as "grounded" without evidence in the dialogue?
-2. Walking the four lenses independently over the code the spec touches, is there a
+2. Walking the five lenses independently over the code the spec touches, is there a
    load-bearing decision the drafter never enumerated at all?
+3. Do the committed sections contradict each other, or does a criterion join several
+   outcomes or leave its threshold open, in a way that would let two readers build or
+   judge different behavior? Report only what changes a decision or a check, not
+   wording taste.
 
 Every finding is relayed to the user as a question (EXTRACT or PRESENT — never
 silently patched into the draft). Close the findings, re-check once; a surviving
