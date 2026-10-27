@@ -81,9 +81,8 @@ settled anything.
 
   There is no "pick a reasonable default and move on" for a load-bearing decision —
   that is a stranger's guess, and it is exactly what detonates later as rework.
-- Ask in batched rounds: at most ~4 questions at a time, lead with your
-  recommendation, and never re-ask what the codebase or the dialogue already
-  answered.
+- Ask in batched rounds: at most four questions at a time, leading with your
+  recommendation.
 
 ### Bring in the design partner while decisions are still open
 
@@ -105,22 +104,18 @@ of questions. Its response must:
 3. provide an implementation design for the proposed target behavior: affected
    symbols and data/API boundaries, state or validation rules, ordered implementation
    seams, verification cases, and explicit non-goals;
-4. identify questions that require the user's domain or product judgment; and
-5. keep the interview to at most four questions per round, with a recommended choice
-   and the consequence of each option.
+4. identify questions that require the user's domain or product judgment, each with a
+   recommended choice and the consequence of each option.
 
 Relay every proposal and question to the user. The controller must not silently adopt a
-design partner suggestion. Use the user's answers to close decisions, then dispatch a
-new fresh design partner for a coherence pass when answers changed the model or when a
-load-bearing decision remains open. Continue the bounded brainstorm/interview rounds
-until the decision surface is closed; if a decision remains unresolved, stop and ask
-the user instead of writing a guessed contract. The design partner may suggest a better
-scope, state model, error policy, acceptance check, or follow-up boundary, but the user
-confirms the resulting product decision. Once confirmed, carry the accepted
-implementation design into `IA.md` as target behavior, constraints, acceptance
-criteria, and risk focus. The design packet is an implementation aid and
-evidence-backed contract; it is not permission for the designer to edit target files
-or silently settle an open product decision.
+design partner suggestion; the user confirms every product decision, and the designer
+never edits target files. Use the user's answers to close decisions, and continue the
+interview rounds until the decision surface is closed; if a decision remains
+unresolved, stop and ask the user instead of writing a guessed contract. Dispatch a new
+fresh design partner only when an answer changed the scope or the state model enough to
+invalidate the implementation design; missing decisions and contradictions are the
+guess-hunt's job (Step 4). Once confirmed, carry the accepted implementation design into
+`IA.md` as target behavior, constraints, acceptance criteria, and risk focus.
 
 ## Step 3 — Draft the spec
 
@@ -132,19 +127,22 @@ structure before answering, show them the decision table from Step 2, not a half
 Use this structure:
 
 ```
-# <work title>
+# <작업 제목>
 
-## Purpose & background      ← why this work exists, in one paragraph
-## Scope                     ← in / out, explicitly
-## Current behavior          ← what the code does today, file:line grounded
-## Target behavior           ← what it must do when this work is done
-## Constraints               ← repo conventions and workflow that apply; what must NOT change
-## Acceptance criteria       ← each criterion an AC-<n> ID, one outcome, an executable check, a phase
-## Invariant oracles         ← only when correctness spans a large input space (see below)
-## Risks & edge cases
-## Risk focus                ← the ONE area where this change fails worst
-## References                ← files, tickets, related docs
+## 목적과 배경      ← Purpose & background: why this work exists, in one paragraph
+## 범위             ← Scope: in / out, explicitly
+## 현재 동작        ← Current behavior: what the code does today, file:line grounded
+## 목표 동작        ← Target behavior: what it must do when this work is done
+## 제약             ← Constraints: repo conventions and workflow that apply; what must NOT change
+## 수용 기준        ← Acceptance criteria: each an AC-<n> ID, one outcome, an executable check, a phase
+## 불변식 오라클    ← Invariant oracles: only when correctness spans a large input space (see below)
+## 위험과 경계 사례 ← Risks & edge cases
+## 위험 초점        ← Risk focus: the ONE area where this change fails worst
+## 참고             ← References: files, tickets, related docs
 ```
+
+The English names after each arrow are how this plugin's instructions refer to the
+sections; the headings in `IA.md` are the Korean ones.
 
 Acceptance criteria follow the same rule as the loop's goal contract: every criterion
 is paired with the exact check that verifies it (a test command, a grep assertion, a
@@ -167,16 +165,10 @@ rather than an ideal the baseline cannot meet, and make a search-based check exc
 the specification and other documents that quote its own pattern.
 
 **Invariant oracles.** When the work must hold an invariant over a space too large to
-enumerate by hand (a cache or index that must answer exactly like its source, an
-optimized path that must equal the plain one, a port that must preserve another
-system's semantics), or when `run-review-loop` routes here because an invariant kept
-failing, specify an oracle instead of more hand-written cases: the reference that is
-correct by construction, the seeded input generator and the dimensions it must cover,
-the comparison and its normalization, the in-loop and extended budgets, and the
-strength requirement: every earlier failure of the invariant is encoded in the target as
-a test-only switch that disables its repair plus the seed or minimized input that
-exposed it, named by the behavior it protects, and the oracle must fail with each switch
-on. The oracle's checks are loop-phase acceptance criteria.
+enumerate by hand, or when `run-review-loop` routes here because an invariant kept
+failing, specify an oracle instead of more hand-written cases, with every element
+`references/invariant-oracle.md` requires. The oracle's checks are loop-phase acceptance
+criteria.
 
 ### Preflight every acceptance check
 
@@ -251,7 +243,8 @@ close its decisions with the user, rerun the preflight for the criteria it adds 
 changes, and get confirmation. Edit the contract in place, add a version line at the
 top of `IA.md`, and append the rationale to `DECISIONS.md`.
 
-Then state the confirmed spec's path plainly, so the caller can use it. The
-`run-review-loop` goal contract cites it as ground truth for the developer, reviewer, and
-gate; the review skill judges the diff against it. Write the spec (and converse) in
-the language the user is conversing in.
+Then state the confirmed spec's path plainly, so the caller can use it.
+
+Write `IA.md` and `DECISIONS.md` in Korean whatever language the conversation uses, and
+converse in the user's language. Keep code, identifiers, file paths, commands, `AC-<n>`
+identifiers, and quoted output as they are.

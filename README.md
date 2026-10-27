@@ -29,6 +29,26 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.17.0
+
+This release makes the exit documents checkable, fixes their language to Korean, and trims instructions that repeated each other.
+
+- **Every document veriloop writes is in Korean.**<br>
+  `IA.md`, `DECISIONS.md`, `REVIEW.md`, and `PRD.md` are written in Korean whatever language the conversation uses; the conversation itself still follows the user.<br>
+  Code, identifiers, file paths, commands, `AC-<n>` identifiers, verdict and severity tokens, and JSON blocks stay as they are. The `IA.md` template and the review report template now use Korean headings.
+- **`PRD.md` is validated like `REVIEW.md`.**<br>
+  The new `scripts/check_prd.py` rejects a missing, renamed, reordered, or extra `##` chapter, an empty chapter, `해당 없음` without a reason, a chapter not written in Korean, and, with `--spec`, a `검증` chapter that leaves out an `AC-<n>` criterion or its `Pass`/`Fail`/`Deferred` result. A failed validation is an archival failure.<br>
+  The ten chapter headings are listed in the loop skill itself, and the contract checks fail if that list, the reference, and the validator disagree.
+- **Exit-document rules load only when a run ends.**<br>
+  The `REVIEW.md` and `PRD.md` writing rules moved to `skills/run-review-loop/references/exit-documents.md`, so the loop skill no longer carries them through every iteration.
+- **One definition of an invariant oracle.**<br>
+  `draft-spec` and `run-review-loop` both point to `skills/draft-spec/references/invariant-oracle.md` instead of keeping two copies that could drift.
+- **Repeated instructions removed.**<br>
+  The inline gate JSON example (the schema is the contract), the hand-written archive steps (`archive_run.py` does them), the reviewer oracle checklist (the review skill owns it), the per-object format-retry rules (now one rule for review and gate objects), and duplicated design-partner and model-group text are gone.<br>
+  The design partner is re-dispatched only when an answer changes the scope or the state model enough to invalidate its implementation design; missing decisions and contradictions are left to the guess-hunt.
+
+`run-review-loop/SKILL.md` shrank from about 38 KB to 31 KB and `draft-spec/SKILL.md` from about 16 KB to 15 KB. No measured token saving is claimed.
+
 ## Changes in 0.16.0
 
 This release checks that every role reads the specification the same way before the loop starts.
@@ -288,6 +308,9 @@ A run that stops at the iteration cap, makes no progress, or loses a worker writ
 
 When a program spans many pieces of work, the pair scales: a program-level `IA.md` and `PRD.md` describe the whole in the parent directory, while each piece keeps its own pair beside it.
 
+`IA.md`, `DECISIONS.md`, `REVIEW.md`, and `PRD.md` are always written in Korean, whatever language the conversation uses.<br>
+Code, identifiers, file paths, commands, `AC-<n>` identifiers, verdict and severity tokens, and JSON blocks stay as they are.
+
 #### What goes in each document
 
 **`IA.md` — the contract.** Nine sections, in this order:
@@ -313,22 +336,23 @@ Include the following for each finding:
 Then record the verdict supported by those findings, the risks ruled out by passed checks, and the machine-readable JSON block.<br>
 Three verified findings are more useful than ten speculative ones.
 
-**`PRD.md` — the product document.** Ten chapters, in this order:
+**`PRD.md` — the product document.** Ten `##` chapters with these exact Korean headings, in this order:
 
-| # | Chapter | What it answers |
-|---|---|---|
-| 1 | What it is | One paragraph, in the reader's language |
-| 2 | Who uses it | The roles, and what each comes to do |
-| 3 | What problem it solves | The situation before, and what changed |
-| 4 | What it does | The feature set, grouped as a user would group it |
-| 5 | How it is used | The main flow end to end, plus secondary flows |
-| 6 | How it works | The model or data flow needed to trust the behaviour, with its assumptions |
-| 7 | Non-functional properties | Determinism, honesty about missing data, accessibility, performance, permissions, language |
-| 8 | Verification | Every acceptance criterion's Pass/Fail with evidence — **one chapter, not the document** |
-| 9 | What remains | Accepted warnings, deferred items, known defects with their disposition, follow-ups with an owner |
-| 10 | Limits of this document | What it did not cover, and what its claims rest on |
+| # | Heading | Chapter | What it answers |
+|---|---|---|---|
+| 1 | `무엇인가` | What it is | One paragraph, in the reader's terms |
+| 2 | `누가 쓰는가` | Who uses it | The roles, and what each comes to do |
+| 3 | `어떤 문제를 푸는가` | What problem it solves | The situation before, and what changed |
+| 4 | `무엇을 하는가` | What it does | The feature set, grouped as a user would group it |
+| 5 | `어떻게 쓰는가` | How it is used | The main flow end to end, plus secondary flows |
+| 6 | `어떻게 동작하는가` | How it works | The model or data flow needed to trust the behaviour, with its assumptions |
+| 7 | `비기능 요구` | Non-functional properties | Determinism, honesty about missing data, accessibility, performance, permissions, language |
+| 8 | `검증` | Verification | Every acceptance criterion's Pass/Fail with evidence — **one chapter, not the document** |
+| 9 | `남은 일` | What remains | Accepted warnings, deferred items, known defects with their disposition, follow-ups with an owner |
+| 10 | `이 문서의 한계` | Limits of this document | What it did not cover, and what its claims rest on |
 
-Chapters scale with the work — a bug fix earns a paragraph each, a program earns the whole document — but none is dropped to save space; say "not applicable" and why.<br>
+Chapters scale with the work — a bug fix earns a paragraph each, a program earns the whole document — but none is dropped to save space; write `해당 없음` and why.<br>
+`scripts/check_prd.py` rejects a missing, renamed, reordered, or extra chapter, a chapter not written in Korean, and a verification chapter that leaves out an `AC-<n>` criterion or its `Pass`/`Fail`/`Deferred` result.<br>
 Ground factual claims with `file:line`, mark inference as inference, and record an unresolved discrepancy as a discrepancy rather than dropping it.
 
 ## Use only the piece you need
@@ -437,7 +461,7 @@ skills/
 ├── veriloop/                     # Independent five-pass blind review
 └── apply-review-findings/        # Repair verified findings
 schemas/                           # Worker, review, gate, archived-run, and REVIEW.md summary contracts
-scripts/                           # Worker-result check, run archiving, and REVIEW.md validation
+scripts/                           # Worker-result check, run archiving, and REVIEW.md and PRD.md validation
 evals/                             # Executable controller traces and guard mutations
 ```
 

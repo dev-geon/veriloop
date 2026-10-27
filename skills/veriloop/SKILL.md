@@ -179,16 +179,19 @@ kind as the first.
 
 ## Step 5 — Report
 
-Write the report in the language the user is conversing in. Use this structure:
+Write the report in Korean whatever language the conversation uses. Keep the verdict
+and severity tokens (`Pass`, `Pass with warnings`, `Fail`, `Failed`, `Warning`,
+`Confirmed`, `Needs verification`), code, identifiers, file paths, commands, and the
+JSON block as they are. Use this structure:
 
 ```
-## Review: <short description of the change>
+## 리뷰: <short description of the change>
 
-**Verdict**: Pass | Pass with warnings | Fail
+**판정**: Pass | Pass with warnings | Fail
 
 <one-paragraph summary: what the change does and the overall assessment>
 
-### Findings
+### 지적사항
 
 #### [Failed] <title>             ← must be fixed before this lands: broken behavior,
                                     silent data corruption, unbounded cost growth,
@@ -201,8 +204,8 @@ cases, and non-goals. (Confirmed / Needs verification)
                                     convention drift, missed cheap optimization
 ...
 
-### Passed checks
-<one line per pass that found nothing, e.g. "Cost: no metered calls in this diff — Pass">
+### 통과한 검사
+<one line per pass that found nothing, e.g. "Cost: 이 diff 에 과금 호출 없음 — Pass">
 ```
 
 Rules for the report:
@@ -212,7 +215,7 @@ Rules for the report:
   first (broken behavior and data corruption above cost, cost above rule violations).
 - Verdict follows from the findings: any Failed → **Fail**; only Warnings →
   **Pass with warnings**; nothing → **Pass**.
-- The "Passed checks" section is not filler — it tells the reader which risks were
+- The "통과한 검사" (passed checks) section is not filler — it tells the reader which risks were
   actually ruled out, which is half the value of a review.
 - Do not pad. Three verified findings beat ten speculative ones. An empty findings list
   with a confident "checked and clean" section is a perfectly good review.

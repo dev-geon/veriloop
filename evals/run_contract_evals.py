@@ -73,14 +73,26 @@ SKILL_CONTRACTS = {
     "stalled worker handling": r"Treat a worker that shows no observable progress",
     "authorized succession": r"A successor may continue the same assignment only after the user authorizes",
     "recurring invariant escalation": r"stop repairing that invariant case by case",
-    "oracle strength": r"The oracle is not\s+accepted until it rediscovers all of them",
+    "oracle defined once": r"skills/draft-spec/references/invariant-oracle\.md",
     "scripted archive": r"scripts/archive_run\.py",
+    "exit documents reference": r"references/exit-documents\.md",
+    "report validation": r"scripts/check_review_report\.py REVIEW\.md",
+    "product document validation": r"scripts/check_prd\.py PRD\.md --spec IA\.md",
+    "exit documents in Korean": r"both written in Korean\s+whatever language the conversation uses",
+}
+EXIT_DOCUMENT_CONTRACTS = {
     "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
+    "product document on goal_met only": r"Write the product document only on a `goal_met` exit",
+    "verification is one chapter": r"\*\*one chapter, not the document\*\*",
+}
+REVIEW_SKILL_CONTRACTS = {
+    "review report in Korean": r"Write the report in Korean whatever language the conversation uses",
 }
 DRAFT_SPEC_CONTRACTS = {
     "design partner before drafting": r"dispatch a fresh `designer`\s+subagent resolved from the `design_review_gate` model group",
     "design partner interview": r"Relay every proposal and question to the user",
     "design partner cannot decide silently": r"must not silently adopt a\s+design partner suggestion",
+    "design partner redispatch bounded": r"Dispatch a new\s+fresh design partner only when an answer changed the scope",
     "design partner implementation design": r"provide an implementation design for the proposed target behavior",
     "guess hunt remains distinct": r"guess-hunt\s+agent must be distinct from every design partner",
     "acceptance phases": r"Give every criterion a phase",
@@ -91,6 +103,11 @@ DRAFT_SPEC_CONTRACTS = {
     "permanent criterion identifiers": r"permanent `AC-<n>` identifier that is never renumbered or reused",
     "one outcome per criterion": r"State one\s+observable outcome per criterion",
     "guess hunt checks contradictions": r"Do the committed sections contradict each other",
+    "spec documents in Korean": r"Write `IA\.md` and `DECISIONS\.md` in Korean whatever language the conversation uses",
+}
+ORACLE_REFERENCE_CONTRACTS = {
+    "oracle strength": r"The oracle is not\s+accepted until\s+it rediscovers all of them",
+    "oracle reference correct by construction": r"reference that is\s+correct by construction",
 }
 
 
@@ -851,6 +868,26 @@ def validate_skill_contracts() -> None:
     draft = (ROOT / "skills" / "draft-spec" / "SKILL.md").read_text(encoding="utf-8")
     for label, pattern in DRAFT_SPEC_CONTRACTS.items():
         require(re.search(pattern, draft) is not None, f"draft-spec skill lost contract: {label}")
+    oracle = (ROOT / "skills" / "draft-spec" / "references" / "invariant-oracle.md").read_text(encoding="utf-8")
+    for label, pattern in ORACLE_REFERENCE_CONTRACTS.items():
+        require(re.search(pattern, oracle) is not None, f"invariant oracle reference lost contract: {label}")
+    exit_docs = (ROOT / "skills" / "run-review-loop" / "references" / "exit-documents.md").read_text(encoding="utf-8")
+    for label, pattern in EXIT_DOCUMENT_CONTRACTS.items():
+        require(re.search(pattern, exit_docs) is not None, f"exit documents reference lost contract: {label}")
+    review = (ROOT / "skills" / "veriloop" / "SKILL.md").read_text(encoding="utf-8")
+    for label, pattern in REVIEW_SKILL_CONTRACTS.items():
+        require(re.search(pattern, review) is not None, f"veriloop skill lost contract: {label}")
+    # The ten PRD chapter headings live in the validator; the skill and the reference must list the same ones in order.
+    module = ast.parse((ROOT / "scripts" / "check_prd.py").read_text(encoding="utf-8"))
+    chapters = next(ast.literal_eval(node.value) for node in module.body
+                    if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "CHAPTERS" for t in node.targets))
+    require(len(chapters) == 10, "check_prd.py must define ten PRD chapters")
+    listing = re.search(r"`PRD\.md` has exactly these ten `##` chapters, in this order:([\s\S]+?)\n\n", text)
+    require(listing is not None, "run-review-loop skill lost the PRD chapter list")
+    listed = re.findall(r"`([^`]+)`", listing.group(1))
+    require(listed == chapters, "run-review-loop PRD chapter list disagrees with scripts/check_prd.py")
+    rows = re.findall(r"^\| `([^`]+)` \|", exit_docs, flags=re.M)
+    require(rows == chapters, "exit documents PRD chapter table disagrees with scripts/check_prd.py")
 
 
 def expect_rejected(case: dict[str, Any], mutation: str) -> None:

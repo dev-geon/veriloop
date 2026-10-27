@@ -50,12 +50,10 @@ repository has a safe, inexpensive local start path.
 ## 2. Load optional model-group configuration
 
 Read `.agent-review/config.json` when present. The canonical groups are
-`design_review_gate` for `designer`, `reviewer`, and `gate`, and `worker` for
-`developer` and `fixer`. `designer` is used by `draft-spec` during the interactive
-specification stage; the other four roles are used by this loop. `inherit`, a missing
-group or role, or a missing file means the current session model. Apply the configured
-reasoning effort exactly as well; fail preflight if either the model or effort cannot be
-honored.
+`design_review_gate` and `worker`, assigned to roles in the effective model table below.
+`inherit`, a missing group or role, or a missing file means the current session model.
+Apply the configured reasoning effort exactly as well; fail preflight if either the
+model or effort cannot be honored.
 
 Existing repositories may still provide the legacy `models` and `reasoning_efforts`
 maps keyed by `developer`, `fixer`, `reviewer`, and `gate`. Accept that shape without
@@ -70,7 +68,7 @@ The effective model table must be recorded before delegation:
 
 | Role | Group | Use |
 |---|---|---|
-| designer | `design_review_gate` | user-facing design brainstorming and decision interview |
+| designer | `design_review_gate` | design brainstorming and decision interview in `draft-spec` |
 | developer | `worker` | implementation |
 | fixer | `worker` | verified repair |
 | reviewer | `design_review_gate` | five-pass independent review |
@@ -343,14 +341,14 @@ accepted warnings without exposing history to the reviewer. Require the object t
 `../../schemas/review-result.schema.json`; when the host supports native structured
 output, supply that schema to the reviewer.
 
-The review schema is exact. The final `json veriloop-review` object contains only
-`verdict` and `findings`; each finding contains only the fields defined by
-`review-result.schema.json`. Do not add role, status, checks, independence, blocker,
-or changed-files metadata to that object. Keep transport status, agent identity,
-strict-mode evidence, and blockers in the controller's run record. If the received
-object is schema-invalid, request one format-only correction from the same completed
-role without rerunning implementation or review; a second invalid result is a
-review failure. Never reinterpret an empty or malformed findings array as a pass.
+Review and gate objects are exact: the final `json veriloop-review` or
+`json veriloop-gate` object contains only the fields its schema defines. Keep role,
+agent identity, transport status, strict-mode and independence evidence, checks,
+changed files, and blockers in the controller's run record. Validate the received object
+before interpreting its verdict. If it is schema-invalid, request one format-only
+correction from the same completed role without rerunning implementation, review, or
+probes, or changing the candidate; a second invalid object is a review failure or a
+blocked gate. Never reinterpret an empty or malformed findings array as a pass.
 
 ### Check stop conditions in order
 
@@ -378,29 +376,13 @@ repair iteration or follow-up run for it until the specification carries a confi
 **invariant oracle**, or the user decides to change the design so that the invariant
 holds by construction.
 
-An invariant oracle is an executable check that decides the invariant for generated or
-exhaustively enumerated inputs by comparing the implementation with a reference that
-is correct by construction: a simpler model, the unoptimized or full-scope path, the
-original implementation, or a metamorphic relation between two runs. Hand-written
-expected values do not qualify. Draft it with draft-spec as a specification delta that
-states:
-
-- the reference, and why it is trustworthy for this invariant;
-- the input generator: seeded and reproducible, covering at least every dimension along
-  which earlier findings varied, and minimizing a failing input before reporting it;
-- the comparison: what is normalized, and that silent wrong answers and unexpected
-  failures both count as divergences unless the specification explicitly allows one;
-- the budget: seeds or time for in-loop runs and for an extended run;
-- strength: every historical Failed finding of that invariant becomes an executable case
-  in the target, a test-only switch that disables its repair plus the seed or minimized
-  input that exposed it, named by the behavior it protects and never by a finding
-  identifier. With a switch on, the oracle must fail for that case. The oracle is not
-  accepted until it rediscovers all of them.
+Draft the oracle with draft-spec as a specification delta; its required elements,
+including the strength requirement over every historical Failed finding of that
+invariant, are defined once in `skills/draft-spec/references/invariant-oracle.md`.
 
 The oracle becomes loop-phase acceptance. The next worker first runs it and shows the
 historical instances red with their repairs disabled, together with the divergences of
 the current target, and then repairs the class until the oracle is green within budget.
-Hand-enumerated cases remain as fast regressions, not as the completeness argument.
 Record each oracle in `run.json` `oracles` with its strength counts.
 
 Once an oracle exists, reproduce any new Failed finding of the same invariant as an
@@ -408,13 +390,10 @@ oracle divergence (seed plus minimized input) before repairing it. If the oracle
 reproduce it, the finding exposes an oracle gap, either a missing generator dimension or
 a flawed reference, and the repair extends the oracle first.
 
-Reviewers and gates judge the oracle's soundness, not only the code it checks, from the
-target itself by reading and rerunning it: whether the reference shares the code path
-under test in a way that hides the defect, whether the generator covers the risk
-dimensions, whether normalization masks real differences, whether the declared budget
-is what the committed command runs, and whether every strength switch makes the oracle
-fail. Never pass them oracle results or the list of historical findings. A useful gate
-probe disables or mutates a guarded behavior and checks that the oracle notices.
+Reviewers judge the oracle's soundness from the target itself, as the bundled `veriloop`
+skill's regression pass defines. Never pass reviewers or gates oracle results or the list
+of historical findings. A useful gate probe disables or mutates a guarded behavior and
+checks that the oracle notices.
 
 ### Final blind gate with late-bound probes
 
@@ -446,36 +425,12 @@ The gate holds only when the snapshot is unchanged, every holdout probe passes, 
 new Failed finding exists. Its report must include the snapshot, probe category,
 command or assertion, captured evidence, and any new Failed finding.
 
-Require a final machine-readable gate block:
-
-```json
-{
-  "gate": "hold | fail | blocked",
-  "snapshot": "commit-and-diff identifier",
-  "independence": "strict | reduced",
-  "probes": [
-    {
-      "category": "boundary | state | failure | property | differential | mutation | assertion",
-      "check": "command or observable assertion",
-      "result": "pass | fail | blocked",
-      "evidence": "captured output"
-    }
-  ],
-  "findings": []
-}
-```
-
-Require this object to validate against `../../schemas/gate-result.schema.json`; use
-native structured output when the host supports it. A schema-invalid gate is blocked,
-not held. Each gate finding contains `severity: failed`, title, relative file, line
-(`0` when no single line applies), captured evidence, and a bounded `repair_plan`.
-
-The gate schema is also exact. The final `json veriloop-gate` object may contain only
-the fields defined by `gate-result.schema.json`; keep role, agent identity, transport
-status, and controller-only independence evidence out of the gate object. Validate
-the received object before interpreting its verdict. A format-only correction may be
-requested once from the same completed gate when the host supports it; do not rerun
-probes or modify the candidate for a formatting retry.
+Require a final `json veriloop-gate` object that validates against
+`../../schemas/gate-result.schema.json` (verdict, snapshot, independence label, probes,
+and findings), under the exact-object rule in the review step above. A schema-invalid
+gate is blocked, not held. Each gate finding contains `severity: failed`, title,
+relative file, line (`0` when no single line applies), captured evidence, and a bounded
+`repair_plan`.
 
 On failure, add the finding to the controller-owned ledger and give the fixer only the
 Failed finding's invariant, minimal reproducible evidence, and its `repair_plan`;
@@ -505,20 +460,11 @@ per-finding checks.
 
 ## 8. Archive and report
 
-On every exit, create the next numbered .agent-review/runs/NNN/ directory. Store each
-developer and fixer result as a JSON file conforming to
-`../../schemas/worker-result.schema.json`, each
-iteration's prose review plus JSON block, each full gate result as a JSON file that
-conforms to `../../schemas/gate-result.schema.json`, and a run.json containing the
-goal, spec path, per-iteration verdict/counts and review paths, acceptance results,
-worker-result paths, blind mode, any authorized relaxation, gate-result paths and final
-summary, and exit reason. Write archives only after the run exits so no active reviewer can consume
-them. Do not copy the specification into the archive.
-
-Copy referenced staging artifacts into that run's `artifacts/` directory, rewrite the
-archived worker-result paths to those copies, and revalidate byte counts and digests.
-Do not archive unreferenced files or retain the staging directory after a verified
-copy. Artifact content remains excluded from reports and later role briefs.
+On every exit, archive the run's worker results, prose reviews with their JSON blocks,
+gate results, and `run.json` into the next numbered `.agent-review/runs/NNN/`
+directory. Write archives only after the run exits so no active reviewer can consume
+them. Do not copy the specification into the archive. Artifact content remains excluded
+from reports and later role briefs.
 
 Do this with the bundled script rather than by hand:
 
@@ -557,74 +503,18 @@ The controller alone writes loop reports and archives; reviewer/gate/fixer outpu
 do not mutate these files. Keep prior run archives immutable and link preceding runs
 from the latest report.
 
-Persist the final report as `REVIEW.md` in the same directory as the confirmed
-specification (`IA.md`), so the outcome lives beside the spec it verified. Keep it
-readable across runs:
+Persist `REVIEW.md` on every exit and `PRD.md` only on a `goal_met` exit, both in the
+same directory as the confirmed specification (`IA.md`) and both written in Korean
+whatever language the conversation uses. Read `references/exit-documents.md` before
+writing either and follow it. `REVIEW.md` ends with exactly one `json veriloop-report`
+summary block. `PRD.md` has exactly these ten `##` chapters, in this order:
+`무엇인가`, `누가 쓰는가`, `어떤 문제를 푸는가`, `무엇을 하는가`, `어떻게 쓰는가`,
+`어떻게 동작하는가`, `비기능 요구`, `검증`, `남은 일`, `이 문서의 한계`.
 
-- Start with a current-state section: the latest run, exit reason, gate status and
-  snapshot, loop-phase acceptance status, and every open item (deferred criteria,
-  warnings with their disposition, unresolved discrepancies). This is the only part a
-  later run rewrites.
-- Follow it with one section per run, newest last, each describing only what that run
-  changed and found. Never rewrite an earlier run's section; correct it with a dated note.
-- End with exactly one fenced block whose info string is `json veriloop-report` and
-  that conforms to `../../schemas/review-report.schema.json`. Use the dispositions
-  `accept`, `issue`, and `cleanup`, and name runs `<work id>/run-NNN` so that runs of
-  different work sharing one archive are never confused.
-- `.agent-review/` is usually untracked, so cite each archived `run.json` by path and
-  SHA-256 in that block instead of relying on links other readers cannot open.
+Validate both before reporting; a failed validation is an archival failure:
 
-Validate it with `python3 ../../scripts/check_review_report.py REVIEW.md --run-json
-<archived run.json>` before reporting; a failed validation is an archival failure. When
-a deferred criterion is executed later, update the current-state section, the summary
-block, and the product document's verification chapter without reopening the loop,
-unless it fails; a failure starts a new repair run.
-
-Also persist a product document as `PRD.md` in that same directory. `IA.md` is the
-contract and `REVIEW.md` is the audit; `PRD.md` is **the description of what now
-exists** — written for someone who was not in the room, and who needs to understand the
-delivered product before they can judge a verification table.
-
-A checklist of acceptance criteria is not a product document. Write these, in this order:
-
-- **What it is** — the thing in one paragraph, in the reader's language, not the
-  implementation's.
-- **Who uses it and what they come to do** — the roles, and what each one wants out of it.
-- **What problem it solves** — the situation before, and what changed.
-- **What it does** — the feature set, grouped the way a user would group it, complete
-  enough that nothing shipped is missing from the list.
-- **How it is used** — the main flow end to end, plus the secondary flows that matter.
-- **How it works** — the model, algorithm, or data flow a reader must hold to trust the
-  numbers or the behaviour. State the assumptions and where they are approximations.
-- **Non-functional properties** — determinism, honesty about missing data, accessibility,
-  performance, permissions, language, whatever the work actually commits to.
-- **Verification** — every acceptance criterion from `IA.md`, by its identifier, with
-  its Pass/Fail and the evidence that settled it, plus the commands or runs that
-  produced that evidence. This is **one chapter, not the document**.
-- **What remains** — accepted warnings, deferred items, known defects and inconsistencies
-  with their disposition, and follow-up work with its owner or ticket. Record a
-  discrepancy you could not resolve as a discrepancy; do not quietly drop it.
-- **Limits of this document** — what it did not cover and what its claims rest on.
-
-For a follow-up repair, update the existing product document in place and preserve
-unchanged grounded sections; do not rewrite the whole feature description. Reference
-shared verification evidence rather than copying full logs into both reports.
-
-Scale the chapters to the work: a single bug fix earns a short paragraph per chapter and
-a full verification table; a program-sized deliverable earns the whole document. Never
-drop a chapter to save space — say "not applicable" and why.
-
-Ground every factual claim in the code with a `file:line`, and mark inference as
-inference. Keep the findings themselves in `REVIEW.md` and reference that file rather
-than restating them.
-
-Write the product document only on a `goal_met` exit; on any other exit, say in the
-report that none was written and why. Overwrite it when the same work runs again.
-
-When a program spans many pieces of work, the same pair scales: a program-level `IA.md`
-and `PRD.md` sit in the parent directory and describe the whole, while each piece keeps
-its own pair in its own directory. The program-level `PRD.md` is the one a stakeholder
-reads first.
+    python3 ../../scripts/check_review_report.py REVIEW.md --run-json <archived run.json>
+    python3 ../../scripts/check_prd.py PRD.md --spec IA.md --run-json <archived run.json>
 
 Record accepted warnings in the ledger. Do not create issues or apply warning-only
 cleanup without the user's authorization. The text report remains the source of truth.

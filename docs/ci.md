@@ -86,7 +86,11 @@ missed a historical failure, a succession to an unarchived worker, a succession 
 one run (which would bypass the fail-closed worker exit), and a succession from a run
 that is not listed in `preceding_runs`. It also checks that the run-review-loop and
 draft-spec instructions still contain the preflight, phase, oracle, stall, succession,
-temporary-path, archive, and report-block rules, and the requirement-quality rules
+temporary-path and archive rules, the report-block and product-document rules in
+`skills/run-review-loop/references/exit-documents.md`, the PRD chapter list (which must
+match `scripts/check_prd.py` in both the skill and the reference), the Korean document
+rule, the single invariant-oracle definition in
+`skills/draft-spec/references/invariant-oracle.md`, and the requirement-quality rules
 (non-functional lens, permanent `AC-<n>` identifiers, one outcome per criterion, and the
 guess-hunt contradiction check).
 
@@ -115,9 +119,16 @@ warnings carry an `accept`/`issue`/`cleanup` disposition, that a `goal_met` repo
 no unresolved Failed finding and no failing last iteration, and, with `--run-json`, that
 each archived `run.json` matches a cited SHA-256 and exit reason.
 
+`scripts/check_prd.py` checks that a `PRD.md` has exactly the ten fixed Korean `##`
+chapters in order, that every chapter has a body written in Korean and gives a reason
+with `해당 없음`, and, with `--spec`, that the `검증` chapter reports every `AC-<n>`
+criterion of the specification with `Pass`, `Fail`, or `Deferred` and no unknown one;
+with `--run-json`, that the run exited `goal_met`.
+
 ```bash
 python3 evals/test_archive_run.py
 python3 evals/test_review_report.py
+python3 evals/test_prd.py
 ```
 
 This suite validates controller state, recorded identities, allowlisted fields, schemas,

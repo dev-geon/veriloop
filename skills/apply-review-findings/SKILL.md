@@ -119,7 +119,8 @@ verified is reported as **Pass**:
 ```
 
 Then list files changed, and anything you deliberately did not touch (nits, unrelated
-observations). Write in the language the user is conversing in.
+observations). Write in the language the user is conversing in; any text you add to a
+persisted `REVIEW.md` is written in Korean.
 
 When the findings came from a persisted `REVIEW.md`, update that file's finding
 statuses to match this table so the persisted report reflects the repaired state. A
