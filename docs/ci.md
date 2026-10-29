@@ -101,9 +101,9 @@ judgment recorded in the ledger; the trace evaluator does not model it.
 ## Run archiving and REVIEW.md validation
 
 `scripts/archive_run.py` writes one `.agent-review/runs/NNN/` directory. It copies
-worker results, gate results, and review files; copies every declared artifact and
-verifies its byte count and SHA-256 before and after the copy; rewrites archived paths
-relative to the run directory; validates each worker result, gate result, review JSON
+worker results, gate results, and review files; copies every declared artifact under
+its staging-relative path and verifies its byte count and SHA-256 before and after the
+copy; rewrites archived paths relative to the run directory; validates each worker result, gate result, review JSON
 block (against its iteration's verdict and counts), and the run record (deferred phases,
 oracle strength, succession references, and the fail-closed exit after an incomplete
 worker); and only then moves the directory into place and, with `--delete-staging`,

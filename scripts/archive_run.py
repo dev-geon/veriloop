@@ -184,17 +184,21 @@ class Archiver:
         seen = set()
         for index, artifact in enumerate(data["artifacts"]):
             origin = (root / artifact["path"]).resolve()
-            require(origin.name not in {"", ".", ".."}, f"{label}.artifacts[{index}]: unusable file name")
-            require(origin.name.casefold() not in seen, f"{label}.artifacts[{index}]: duplicate artifact basename")
-            seen.add(origin.name.casefold())
+            require(root in origin.parents, f"{label}.artifacts[{index}]: artifact is outside its staging directory")
+            # Keep the staging-relative path so equal file names in different folders stay distinct.
+            relative = origin.relative_to(root)
+            require(all(part not in {"", ".", ".."} for part in relative.parts), f"{label}.artifacts[{index}]: unusable file name")
+            key = relative.as_posix().casefold()
+            require(key not in seen, f"{label}.artifacts[{index}]: duplicate artifact path")
+            seen.add(key)
             payload = origin.read_bytes()
             require(digest_matches(payload, artifact), f"{label}.artifacts[{index}]: digest or size changed before copy")
-            target_dir.mkdir(parents=True, exist_ok=True)
-            target = target_dir / origin.name
+            target = target_dir / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
             with target.open("xb") as handle:
                 handle.write(payload)
             require(digest_matches(target.read_bytes(), artifact), f"{label}.artifacts[{index}]: digest or size changed after copy")
-            mapping[artifact["path"]] = f"artifacts/{source.stem}/{origin.name}"
+            mapping[artifact["path"]] = f"artifacts/{source.stem}/{relative.as_posix()}"
 
         for artifact in data["artifacts"]:
             artifact["path"] = mapping[artifact["path"]]

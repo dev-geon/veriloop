@@ -115,17 +115,19 @@ with tempfile.TemporaryDirectory() as tmp:
     rejected = 0
 
     def expect_rejected(label, reason, **kwargs):
+        # reason may be a tuple when the rejecting check depends on the file system's case sensitivity.
         global rejected
         before, state = listing(), staging_state()
         result = archive(**kwargs)
         assert result.returncode == 1, (label, result.stdout, result.stderr)
-        assert result.stderr.startswith('INVALID: ') and reason in result.stderr, (label, result.stderr)
+        reasons = (reason,) if isinstance(reason, str) else reason
+        assert result.stderr.startswith('INVALID: ') and any(r in result.stderr for r in reasons), (label, result.stderr)
         assert SECRET not in result.stderr + result.stdout, label
         assert listing() == before, (label, listing())
         assert staging_state() == state, label
         rejected += 1
 
-    # 1. Happy path: artifacts copied, paths rewritten relative to the run directory.
+    # 1. Happy path: artifacts copied under their staging-relative paths, paths rewritten relative to the run directory.
     result = archive()
     assert result.returncode == 0, result.stderr
     run_dir = runs / '001'
@@ -141,10 +143,10 @@ with tempfile.TemporaryDirectory() as tmp:
     assert run_json['worker_successions'][0]['successor'] == 'workers/dev-2.json'
     assert run_json['oracles'] == run['oracles'] and run_json['model_substitutions'] == run['model_substitutions']
     archived = json.loads((run_dir / 'workers/dev-2.json').read_text(encoding='utf-8'))
-    assert [a['path'] for a in archived['artifacts']] == ['artifacts/dev-2/evidence.txt', 'artifacts/dev-2/check.txt']
-    assert [c['artifact_path'] for c in archived['checks']] == ['artifacts/dev-2/evidence.txt', 'artifacts/dev-2/check.txt']
+    assert [a['path'] for a in archived['artifacts']] == ['artifacts/dev-2/evidence.txt', 'artifacts/dev-2/logs/check.txt']
+    assert [c['artifact_path'] for c in archived['checks']] == ['artifacts/dev-2/evidence.txt', 'artifacts/dev-2/logs/check.txt']
     assert (run_dir / 'artifacts/dev-2/evidence.txt').read_bytes() == evidence.read_bytes()
-    assert (run_dir / 'artifacts/dev-2/check.txt').read_bytes() == check_log.read_bytes()
+    assert (run_dir / 'artifacts/dev-2/logs/check.txt').read_bytes() == check_log.read_bytes()
     assert not any(p.name == 'unreferenced.txt' for p in run_dir.rglob('*'))
     assert (run_dir / 'gates/gate-1.json').read_bytes() == (root / 'case/gate-1.json').read_bytes()
     assert (run_dir / 'reviews/review-1.md').read_text(encoding='utf-8') == review_text
@@ -246,4 +248,71 @@ with tempfile.TemporaryDirectory() as tmp:
     assert listing() == ['001', '002', '003', '004'], listing()
     assert json.loads((runs / '004/run.json').read_text(encoding='utf-8'))['worker_files'] == ['workers/dev-1.json']
 
-print(f'PASS archive CLI: 4 archived runs and {rejected} rejection cases')
+    # 6. Equal file names in different staging folders are both archived under their own relative paths.
+    summaries = {'final': b'{"result": "pass"}\n', 'red': b'{"result": "fail", "rediscovered": 2}\n'}
+
+    def with_artifact(value, path, payload):
+        value = copy.deepcopy(value)
+        value['checks'].append({
+            'kind': 'assertion', 'criterion': f'Summary {len(value["checks"])} is recorded', 'check': 'read the summary',
+            'exit_code': None, 'result': 'pass', 'evidence': 'summary written', 'artifact_path': path,
+        })
+        value['artifacts'].append({'path': path, 'bytes': len(payload), 'sha256': sha(payload)})
+        return value
+
+    nested = completed
+    for phase, payload in summaries.items():
+        (staging / phase / 'oracle').mkdir(parents=True, exist_ok=True)
+        (staging / phase / 'oracle' / 'oracle-summary.json').write_bytes(payload)
+        nested = with_artifact(nested, f'{phase}/oracle/oracle-summary.json', payload)
+
+    def check_worker(path, staging_root):
+        return subprocess.run([sys.executable, str(ROOT / 'scripts/check_worker_result.py'), str(path), '--role', 'developer',
+                               '--staging-root', str(staging_root)], capture_output=True, env=ENV)
+
+    checked = check_worker(write_json(inputs / 'nested' / 'dev-2.json', nested), staging)
+    assert checked.returncode == 0, checked.stderr
+    result = archive(workers={'dev-2.json': nested})
+    assert result.returncode == 0, result.stderr
+    assert listing() == ['001', '002', '003', '004', '005'], listing()
+    nested_dir = runs / '005'
+    archived = json.loads((nested_dir / 'workers/dev-2.json').read_text(encoding='utf-8'))
+    expected = ['artifacts/dev-2/evidence.txt', 'artifacts/dev-2/logs/check.txt',
+                'artifacts/dev-2/final/oracle/oracle-summary.json', 'artifacts/dev-2/red/oracle/oracle-summary.json']
+    assert [a['path'] for a in archived['artifacts']] == expected, archived['artifacts']
+    assert [c['artifact_path'] for c in archived['checks']] == expected, archived['checks']
+    for phase, payload in summaries.items():
+        assert (nested_dir / 'artifacts/dev-2' / phase / 'oracle/oracle-summary.json').read_bytes() == payload
+    checked = check_worker(nested_dir / 'workers/dev-2.json', nested_dir)
+    assert checked.returncode == 0, checked.stderr
+
+    # A genuine collision or an escape is still rejected.
+    red = summaries['red']
+    expect_rejected('same artifact path declared twice', 'artifact paths are duplicated',
+                    workers={'dev-2.json': with_artifact(nested, 'red/oracle/oracle-summary.json', red)})
+    expect_rejected('alias of an archived artifact path', 'artifact aliases are duplicated',
+                    workers={'dev-2.json': with_artifact(nested, 'red/oracle/../oracle/oracle-summary.json', red)})
+    variant = staging / 'RED' / 'oracle' / 'oracle-summary.json'
+    case_sensitive = not variant.exists()
+    if case_sensitive:  # the case-only variant is a distinct file here; on other file systems it aliases the original
+        variant.parent.mkdir(parents=True)
+        variant.write_bytes(red)
+    expect_rejected('case-only artifact path variant', ('duplicate artifact path', 'artifact aliases are duplicated'),
+                    workers={'dev-2.json': with_artifact(nested, 'RED/oracle/oracle-summary.json', red)})
+    if case_sensitive:
+        shutil.rmtree(staging / 'RED')
+    expect_rejected('relative path escaping staging', 'no --staging directory contains',
+                    workers={'dev-2.json': with_artifact(nested, '../../inputs/outside.txt', outside.read_bytes())})
+    link = staging / 'linked'
+    try:
+        link.symlink_to(staging / 'red', target_is_directory=True)
+    except OSError:  # creating symlinks needs a privilege some hosts withhold
+        symlink_note = ' (symlinked-parent case skipped: no symlink privilege)'
+    else:
+        symlink_note = ''
+        expect_rejected('artifact under a symlinked folder', 'symlinked artifact parent',
+                        workers={'dev-2.json': with_artifact(nested, 'linked/oracle/oracle-summary.json', red)})
+        link.unlink()
+    assert listing() == ['001', '002', '003', '004', '005'], listing()
+
+print(f'PASS archive CLI: 5 archived runs and {rejected} rejection cases{symlink_note}')

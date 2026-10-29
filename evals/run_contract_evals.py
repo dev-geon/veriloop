@@ -61,6 +61,10 @@ SKILL_CONTRACTS = {
     "worker transport before body": r"Inspect the host delegation/tool status before reading the worker body",
     "whole-object JSON parsing": r"Never extract JSON from mixed prose with a regular expression",
     "single format retry": r"allow one format-only retry in the same\s+worker context",
+    "format correction after a mid-run version change": (
+        r"plugin version changes\s+during a run[\s\S]+?without changing its verdict or findings[\s\S]+?"
+        r"controller never fills the missing fields in itself"
+    ),
     "completed worker semantics": r"`completed` requires `termination: completed`",
     "bounded worker envelope": r"entire UTF-8 worker result at or below 16 KiB",
     "verified artifact handoff": r"byte count and SHA-256 digest",

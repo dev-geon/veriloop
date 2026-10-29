@@ -348,7 +348,11 @@ changed files, and blockers in the controller's run record. Validate the receive
 before interpreting its verdict. If it is schema-invalid, request one format-only
 correction from the same completed role without rerunning implementation, review, or
 probes, or changing the candidate; a second invalid object is a review failure or a
-blocked gate. Never reinterpret an empty or malformed findings array as a pass.
+blocked gate. The same single correction applies when the plugin version changes
+during a run and an object a role returned earlier no longer validates: the role adds
+only what the new schema requires without changing its verdict or findings, and the
+controller never fills the missing fields in itself. Never reinterpret an empty or
+malformed findings array as a pass.
 
 ### Check stop conditions in order
 
