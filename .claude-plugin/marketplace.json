@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Strict-blind, specification-grounded review and repair loops with evidence-grounded repair designs for AI-written code.",
-    "version": "0.17.0"
+    "version": "0.17.1"
   },
   "plugins": [
     {
       "name": "veriloop",
       "source": "./",
       "description": "Reviews agent-produced diffs with unique blind reviewers, produces evidence-grounded repair designs, and uses late-bound holdout probes before declaring success.",
-      "version": "0.17.0",
+      "version": "0.17.1",
       "author": {
         "name": "bgun42"
       },

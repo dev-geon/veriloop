@@ -29,6 +29,16 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT 라이선스" /></a>
 </p>
 
+## 0.17.1 변경 사항
+
+이번 패치는 이름이 같은 작업자 산출물의 보관 오류를 고치고, 실행 도중 플러그인 판이 바뀔 때의 처리를 명시합니다.
+
+- **산출물을 스테이징 기준 상대 경로 그대로 보관합니다.**<br>
+  `scripts/archive_run.py`는 모든 산출물을 `artifacts/<작업자>/<파일 이름>`으로 복사했기 때문에, 작업자가 서로 다른 폴더에 같은 이름의 파일 두 개(예: `final/summary.json`·`red/summary.json`)를 쓰면 `duplicate artifact basename`으로 거부됐습니다. 이제 `artifacts/<작업자>/<스테이징 기준 상대 경로>`로 복사하고, `artifacts[]`와 `checks[].artifact_path`의 경로도 그에 맞게 다시 씁니다.<br>
+  같은 상대 경로가 두 번 나오거나, 대소문자만 다르거나, 스테이징 폴더를 벗어나는 경로는 여전히 아무것도 쓰기 전에 거부합니다. 이전 판이 보관한 실행은 그대로 둡니다.
+- **실행 도중 판이 바뀌어도 형식 보정 1회 규칙을 적용합니다.**<br>
+  실행 중에 플러그인을 올려 앞서 받은 리뷰·gate 객체가 새 스키마에 맞지 않으면, 같은 역할에게 같은 1회 보정을 받습니다. 역할은 새 스키마가 요구하는 것만 더하고 판정과 finding은 바꾸지 않으며, 컨트롤러가 빠진 필드를 대신 채우지 않습니다.
+
 ## 0.17.0 변경 사항
 
 이번 버전은 종료 문서를 기계적으로 검증하고, 문서 언어를 한글로 고정하며, 서로 반복되던 지시를 정리합니다.

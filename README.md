@@ -29,6 +29,16 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.17.1
+
+This patch release fixes archiving of worker artifacts that share a file name and states how to handle a plugin upgrade in the middle of a run.
+
+- **Artifacts keep their staging-relative path when archived.**<br>
+  `scripts/archive_run.py` copied every artifact to `artifacts/<worker>/<file name>`, so a worker that wrote two files with the same name in different folders (for example `final/summary.json` and `red/summary.json`) was refused with `duplicate artifact basename`. Artifacts are now copied to `artifacts/<worker>/<staging-relative path>`, and the paths in `artifacts[]` and `checks[].artifact_path` are rewritten to match.<br>
+  The same relative path twice, a path that differs only in case, and a path that leaves the staging directory are still refused before anything is written. Runs archived by earlier versions are left as they are.
+- **A format correction covers a mid-run version change.**<br>
+  When the plugin is upgraded during a run and a review or gate object returned earlier no longer validates against the new schema, the same role gets the same single correction: it adds only what the new schema requires without changing its verdict or findings, and the controller never fills the missing fields in itself.
+
 ## Changes in 0.17.0
 
 This release makes the exit documents checkable, fixes their language to Korean, and trims instructions that repeated each other.

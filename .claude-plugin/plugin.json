@@ -1,6 +1,6 @@
 {
   "name": "veriloop",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Strict-blind review of AI-written changes with evidence-grounded repair designs across regression, performance, cloud cost, readability, and repository conventions, plus a specification-grounded develop→review→fix loop with late-bound holdout gates.",
   "author": {
     "name": "bgun42"
