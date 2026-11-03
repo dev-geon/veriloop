@@ -29,6 +29,14 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.18.0
+
+This release removes the cap on interview questions during specification.
+
+- **`draft-spec` asks every question the decision surface needs.**<br>
+  The interview no longer stops at four questions per round, and the instruction to "ask minimally" is gone. Every decision whose answer belongs to the user is asked; a question left unasked comes back later as rework.<br>
+  Questions are still grouped into rounds with a recommendation first. When the host's question tool limits how many questions fit in one call, the controller makes as many calls as the round needs instead of dropping, merging, or postponing questions. Decisions the code already answers are still looked up rather than asked.
+
 ## Changes in 0.17.1
 
 This patch release fixes archiving of worker artifacts that share a file name and states how to handle a plugin upgrade in the middle of a run.
@@ -241,7 +249,7 @@ to the current session model.
 ### 1. Draft and confirm the specification
 
 `draft-spec` first inspects the repository's `AGENTS.md` / `CLAUDE.md`, relevant code, tests, and established patterns.<br>
-Before writing the contract, its design partner proposes improvements and trade-offs and interviews you about unresolved product decisions in rounds of at most four questions.<br>
+Before writing the contract, its design partner proposes improvements and trade-offs and interviews you about every unresolved product decision, with no cap on the number of questions.<br>
 It then writes a work specification in which every acceptance criterion is paired with a command that can actually verify it, such as a test or a grep assertion.
 
 ```text

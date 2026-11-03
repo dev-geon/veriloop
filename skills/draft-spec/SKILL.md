@@ -68,7 +68,8 @@ settled anything.
   interfaces, consistency), **contract** (status/enum sets, uniqueness, output
   shapes), **non-functional** (performance and cost bounds, permissions, reliability
   under failure — only where the work touches them; see
-  `references/requirement-quality.md`). Enumerate exhaustively; you will ask minimally.
+  `references/requirement-quality.md`). Enumerate exhaustively, and ask about every
+  decision whose answer belongs to the user.
 - Resolve each enumerated decision by where the knowledge lives — never by silent
   default:
   - the code answers it → look it up (Step 1), don't ask;
@@ -81,8 +82,12 @@ settled anything.
 
   There is no "pick a reasonable default and move on" for a load-bearing decision —
   that is a stranger's guess, and it is exactly what detonates later as rework.
-- Ask in batched rounds: at most four questions at a time, leading with your
-  recommendation.
+- Ask every question the decision surface needs; there is no cap on how many. A
+  question left unasked comes back later as rework, while one more question costs the
+  user a minute now. Group related questions into rounds and lead each with your
+  recommendation. When the host's question tool limits how many questions fit in one
+  call, use as many calls as the round needs instead of dropping, merging, or
+  postponing questions to fit the limit.
 
 ### Bring in the design partner while decisions are still open
 
