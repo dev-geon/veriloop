@@ -109,9 +109,17 @@ Keep worker responses compact. Return changed files, check command or assertion,
 result, short evidence, and blockers; omit reasoning traces and full tool transcripts.
 The controller must never paste raw worker output into another role's brief.
 
+State the host's execution limits in every worker brief: its per-command time limit and
+whether a detached or background process survives. Tell the worker to split or bound a
+longer command so that it finishes inside the limit, and not to detach it, because a
+worker cannot report the result of a command it no longer watches. Give the limits as
+this host defines them; never carry over another host's values.
+
 Before the original worker submission, use
 `python3 ../../scripts/check_worker_result.py RESULT.json --role fixer --staging-root DIR`
 (paths here are relative to this skill) to validate the complete payload and artifacts.
+Commands in this skill use `python3`; where that does not start Python, as on many Windows
+machines, use the interpreter that does, such as `python`.
 Use `--role developer` for development. The helper validates; it never truncates evidence,
 rewrites verdicts, runs acceptance checks or replaces controller/host-status validation.
 Perform this before returning the original result, not during the tool-free format retry.
@@ -132,6 +140,11 @@ worktree and grant the worker access only to its target plus that directory. Kee
 entire UTF-8 worker result at or below 16 KiB. Keep each evidence excerpt, tool error,
 and blocker message at or below 512 characters. The schema also caps checks at 32,
 tool failures at 16, and artifacts at 8.
+
+Check output and other run evidence never go inside the target worktree. A file written
+there changes the diff digest that freezes the gate's target and adds noise to the
+reviewed change. When a check needs to keep output, send it to a temporary path or the
+issued staging directory.
 
 When essential output does not fit, write it to the issued staging directory and
 return only the short excerpt plus `artifact_path`. Declare every referenced artifact
@@ -312,6 +325,10 @@ not the fewest lines or one symptom at a time.
 Workers run their assigned local checks; the controller independently reruns those
 checks. Run the full required acceptance set on the final candidate, including required
 device checks before gate. Do not repeat full builds or device flows after each edit.
+A fixer reproduces each Failed finding, confirms the repair, and runs the tests that
+directly cover what it changed, plus any oracle its packet names. It does not run the
+cumulative acceptance set or long end-to-end flows, and its brief must not ask for them:
+the controller runs those once on the repaired candidate.
 After a pass, repeat checks only for a new relevant change, failure or unresolved risk;
 record why. Do not reuse results from an older target as final-candidate evidence.
 Record a command's evidence once and map all covered criteria to it without dropping
@@ -374,7 +391,9 @@ Review and gate objects are exact: the final `json veriloop-review` or
 `json veriloop-gate` object contains only the fields its schema defines. Keep role,
 agent identity, transport status, strict-mode and independence evidence, checks,
 changed files, and blockers in the controller's run record. Validate the received object
-before interpreting its verdict. If it is schema-invalid, request one format-only
+before interpreting its verdict, with
+`python3 ../../scripts/check_review_result.py REVIEW-N.md` for a review and
+`python3 ../../scripts/check_gate_result.py GATE.json --snapshot ID` for a gate. If it is schema-invalid, request one format-only
 correction from the same completed role without rerunning implementation, review, or
 probes, or changing the candidate; a second invalid object is a review failure or a
 blocked gate. The same single correction applies when the plugin version changes
@@ -459,11 +478,46 @@ new Failed finding exists. Its report must include the snapshot, probe category,
 command or assertion, captured evidence, and any new Failed finding.
 
 Require a final `json veriloop-gate` object that validates against
-`../../schemas/gate-result.schema.json` (verdict, snapshot, independence label, probes,
-and findings), under the exact-object rule in the review step above. A schema-invalid
-gate is blocked, not held. Each gate finding contains `severity: failed`, title,
-relative file, line (`0` when no single line applies), captured evidence, and a bounded
-`repair_plan`.
+`../../schemas/gate-result.schema.json`, under the exact-object rule in the review step
+above. A schema-invalid gate is blocked, not held. Copy this shape into the gate's brief;
+a schema path alone is not enough for a role to produce it:
+
+```json veriloop-gate
+{
+  "gate": "hold | fail | blocked",
+  "snapshot": "the frozen snapshot identifier",
+  "independence": "strict | reduced",
+  "probes": [
+    {
+      "category": "boundary | state | failure | property | differential | mutation | assertion",
+      "check": "the command or assertion",
+      "result": "pass | fail | blocked",
+      "evidence": "captured output"
+    }
+  ],
+  "findings": [
+    {
+      "severity": "failed",
+      "title": "short title",
+      "file": "relative/path",
+      "line": 0,
+      "evidence": "minimal reproducible evidence",
+      "repair_plan": {
+        "invariant": "the behavior that must remain true",
+        "root_cause": "why the current code violates it",
+        "affected_paths": ["relative/path:Symbol"],
+        "implementation_steps": ["ordered step"],
+        "verification_cases": ["case the fixer must verify"],
+        "non_goals": ["what the repair must not change"]
+      }
+    }
+  ]
+}
+```
+
+Each gate finding contains `severity: failed`, title, relative file, line (`0` when no
+single line applies), captured evidence, and a bounded `repair_plan`. A holding gate has
+`"findings": []`.
 
 On failure, add the finding to the controller-owned ledger and give the fixer only the
 Failed finding's invariant, minimal reproducible evidence, and its `repair_plan`;

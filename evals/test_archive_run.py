@@ -164,6 +164,14 @@ with tempfile.TemporaryDirectory() as tmp:
     assert (runs / '002/artifacts/dev-2/evidence.txt').exists()
     make_staging()
 
+    # 2b. The tagged fence the loop requires is read like a plain one, and other tags are not review results.
+    tagged = '# Iteration 1\n\n```json veriloop-review\n{"verdict": "pass", "findings": []}\n```\n'
+    result = archive(review_value=tagged)
+    assert result.returncode == 0, result.stderr
+    shutil.rmtree(runs / '003')
+    expect_rejected('a report summary block is not a review result', 'no machine-readable JSON block',
+                    review_value='# Iteration 1\n\n```json veriloop-report\n{"verdict": "pass", "findings": []}\n```\n')
+
     # 3. Rejections: exit 1, no new run directory, no .partial left, staging intact.
     bad = copy.deepcopy(completed); bad['artifacts'][0]['sha256'] = '0' * 64
     expect_rejected('artifact digest mismatch', 'artifact digest is incorrect', workers={'dev-2.json': bad})

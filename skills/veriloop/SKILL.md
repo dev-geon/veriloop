@@ -195,7 +195,8 @@ JSON block as they are. Use this structure:
 
 #### [Failed] <title>             ← must be fixed before this lands: broken behavior,
                                     silent data corruption, unbounded cost growth,
-                                    serious performance defect, written-rule violation
+                                    serious performance defect, written-rule violation,
+                                    confirmed specification violation
 <file>:<line> — evidence, why it fails, suggested fix, and a compact repair plan
 covering the invariant, root cause, affected paths, implementation steps, verification
 cases, and non-goals. (Confirmed / Needs verification)
@@ -213,6 +214,12 @@ Rules for the report:
 - Two severities only. **Failed** = the change must not land as-is. **Warning** =
   worth fixing, but a human may reasonably accept it. Order Failed findings worst
   first (broken behavior and data corruption above cost, cost above rule violations).
+- A Confirmed contradiction of a committed statement in the specification's Scope,
+  Target behavior, or Constraints is **Failed**, whether or not an acceptance criterion
+  names it; quote the statement in the evidence. An acceptance criterion checks a
+  requirement, it does not limit it. This covers direct contradictions only: a Needs
+  verification suspicion, behavior the specification leaves open, and readability or
+  convention drift keep their usual severity.
 - Verdict follows from the findings: any Failed → **Fail**; only Warnings →
   **Pass with warnings**; nothing → **Pass**.
 - The "통과한 검사" (passed checks) section is not filler — it tells the reader which risks were
@@ -238,7 +245,8 @@ the `run-review-loop` and `apply-review-findings` skills, CI scripts — consume
 review without parsing prose.
 
 For an interactive review, keep the prose report as the source of truth and end it
-with the fenced JSON object below. When the host supplies the schema as a native
+with the fenced JSON object below. In strict loop mode tag the fence
+`json veriloop-review`. When the host supplies the schema as a native
 structured-output constraint, or CI explicitly requests raw JSON, return only the
 schema-conforming object with no fence or surrounding prose. Never make automation
 extract JSON from prose.

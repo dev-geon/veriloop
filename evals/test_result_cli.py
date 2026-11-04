@@ -1,0 +1,67 @@
+"""Regression checks for the reviewer and gate result validation commands."""
+import copy
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[1]
+ENV = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONDONTWRITEBYTECODE='1')
+PLAN = {'invariant': 'i', 'root_cause': 'r', 'affected_paths': ['a.py'], 'implementation_steps': ['s'],
+        'verification_cases': ['v'], 'non_goals': []}
+FINDING = {'severity': 'failed', 'title': 't', 'file': 'a.py', 'line': 1, 'confidence': 'confirmed',
+           'fix_hint': 'f', 'repair_plan': PLAN}
+FAILED = {'verdict': 'fail', 'findings': [FINDING]}
+PASSED = {'verdict': 'pass', 'findings': []}
+GATE = json.loads((ROOT / 'evals/fixtures/archives/clean-gate.json').read_text(encoding='utf-8'))
+checks = 0
+
+
+def run(script, payload, *extra):
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / 'result.txt'
+        path.write_text(payload if isinstance(payload, str) else json.dumps(payload), encoding='utf-8')
+        return subprocess.run([sys.executable, str(ROOT / 'scripts' / script), str(path), *extra],
+                              capture_output=True, text=True, encoding='utf-8', env=ENV)
+
+
+def expect(script, payload, valid, label, *extra, reason=None):
+    global checks
+    result = run(script, payload, *extra)
+    assert (result.returncode == 0) == valid, (label, result.stdout, result.stderr)
+    if reason:
+        assert reason in result.stderr, (label, result.stderr)
+    checks += 1
+
+
+def report(value, info='json'):
+    return f'## 리뷰\n\n본문\n\n```{info}\n{json.dumps(value)}\n```\n'
+
+
+REVIEW = 'check_review_result.py'
+expect(REVIEW, PASSED, True, 'raw JSON')
+expect(REVIEW, FAILED, True, 'raw JSON with a finding')
+expect(REVIEW, report(PASSED), True, 'plain fence')
+expect(REVIEW, report(FAILED, 'json veriloop-review'), True, 'tagged fence')
+expect(REVIEW, report(PASSED) + report(FAILED, 'json veriloop-review'), True, 'last block wins')
+expect(REVIEW, '## 리뷰\n\n통과\n', False, 'no block', reason='no machine-readable JSON block')
+expect(REVIEW, report(PASSED, 'json veriloop-report'), False, 'report block is not a result', reason='no machine-readable JSON block')
+expect(REVIEW, {'verdict': 'pass', 'findings': [FINDING]}, False, 'pass with a finding', reason='pass must have no findings')
+expect(REVIEW, {'verdict': 'fail', 'findings': []}, False, 'fail without a finding', reason='fail must contain')
+expect(REVIEW, {'verdict': 'fail', 'findings': [dict(FINDING, repair_plan='fix it')]}, False, 'repair plan as a string', reason='repair_plan')
+expect(REVIEW, '{"verdict": "pass", "verdict": "pass", "findings": []}', False, 'duplicate key', reason='duplicate JSON key')
+
+GATE_SCRIPT = 'check_gate_result.py'
+expect(GATE_SCRIPT, GATE, True, 'clean gate')
+expect(GATE_SCRIPT, GATE, True, 'matching snapshot', '--snapshot', GATE['snapshot'])
+expect(GATE_SCRIPT, GATE, False, 'other snapshot', '--snapshot', 'sha256:other', reason='different snapshot')
+renamed = copy.deepcopy(GATE); renamed['verdict'] = renamed.pop('gate')
+expect(GATE_SCRIPT, renamed, False, 'verdict instead of gate', reason='missing required keys')
+shaped = copy.deepcopy(GATE); shaped['probes'] = [{'id': 'p1', 'description': 'd', 'command': 'c', 'result': 'pass', 'evidence': 'e'}]
+expect(GATE_SCRIPT, shaped, False, 'probe with the wrong fields', reason='missing required keys')
+failing = copy.deepcopy(GATE); failing['probes'][0]['result'] = 'fail'
+expect(GATE_SCRIPT, failing, False, 'held with a failed probe', reason='held with a failed probe')
+expect(GATE_SCRIPT, 'gate: ' + json.dumps(GATE), False, 'prose before the object', reason='invalid JSON')
+print(f'PASS result CLI: {checks} cases')

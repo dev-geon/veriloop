@@ -11,6 +11,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = ROOT / "schemas"
 DEFAULT_CASES = Path(__file__).with_name("contract-cases.json")
 WORKER_RESULT_MAX_BYTES = 16_384
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*$")
+REVIEW_FENCE_INFOS = (["json"], ["json", "veriloop-review"])
 
 REVIEW_BRIEF = {
     "strict_blind",
@@ -83,6 +87,13 @@ SKILL_CONTRACTS = {
     "report validation": r"scripts/check_review_report\.py REVIEW\.md",
     "product document validation": r"scripts/check_prd\.py PRD\.md --spec IA\.md",
     "exit documents in Korean": r"both written in Korean\s+whatever language the conversation uses",
+    "interpreter fallback": r"where that does not start Python",
+    "host limits in the worker brief": r"State the host's execution limits in every worker brief",
+    "run evidence outside the target": r"run evidence never go inside the target worktree",
+    "fixer verification is bounded": r"It does not run the\s+cumulative acceptance set",
+    "review result validator": r"scripts/check_review_result\.py",
+    "gate result validator": r"scripts/check_gate_result\.py",
+    "gate shape reaches the brief": r"Copy this shape into the gate's brief",
 }
 EXIT_DOCUMENT_CONTRACTS = {
     "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
@@ -91,6 +102,8 @@ EXIT_DOCUMENT_CONTRACTS = {
 }
 REVIEW_SKILL_CONTRACTS = {
     "review report in Korean": r"Write the report in Korean whatever language the conversation uses",
+    "specification violation is Failed": r"whether or not an acceptance criterion\s+names it",
+    "loop review fence": r"tag the fence\s+`json veriloop-review`",
 }
 DRAFT_SPEC_CONTRACTS = {
     "design partner before drafting": r"dispatch a fresh `designer`\s+subagent resolved from the `design_review_gate` model group",
@@ -108,6 +121,7 @@ DRAFT_SPEC_CONTRACTS = {
     "one outcome per criterion": r"State one\s+observable outcome per criterion",
     "guess hunt checks contradictions": r"Do the committed sections contradict each other",
     "spec documents in Korean": r"Write `IA\.md` and `DECISIONS\.md` in Korean whatever language the conversation uses",
+    "evidence outside the repository": r"evidence outside the repository",
 }
 ORACLE_REFERENCE_CONTRACTS = {
     "oracle strength": r"The oracle is not\s+accepted until\s+it rediscovers all of them",
@@ -226,12 +240,69 @@ def validate_result(name: str, result: dict[str, Any]) -> None:
     validate_schema(result, schema, schema)
 
 
+def fenced_blocks(text: str) -> list[tuple[list[str], str]]:
+    """Return (info words, body) for every closed fenced block, honouring fence nesting."""
+    blocks: list[tuple[list[str], str]] = []
+    body: list[str] = []
+    fence: tuple[str, list[str]] | None = None
+    for line in text.splitlines():
+        if fence is None:
+            match = FENCE_OPEN.match(line)
+            if match:
+                marker, info = match.groups()
+                if marker[0] == "`" and "`" in info:
+                    continue  # CommonMark forbids backticks in a backtick fence's info string.
+                fence, body = (marker, info.split()), []
+            continue
+        match = FENCE_CLOSE.match(line)
+        if match and match.group(1)[0] == fence[0][0] and len(match.group(1)) >= len(fence[0]):
+            blocks.append((fence[1], "\n".join(body)))
+            fence = None
+        else:
+            body.append(line)
+    return blocks
+
+
+def review_result_text(text: str) -> str | None:
+    """The body of a report's last review JSON block, with or without the loop-mode tag."""
+    bodies = [body for info, body in fenced_blocks(text) if info in REVIEW_FENCE_INFOS]
+    return bodies[-1] if bodies else None
+
+
+def parse_json_object(raw: bytes) -> dict[str, Any]:
+    """Parse one whole JSON object from UTF-8 bytes, rejecting duplicate keys."""
+
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in items:
+            require(key not in result, "duplicate JSON key")
+            result[key] = value
+        return result
+
+    data = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs)
+    require(isinstance(data, dict), "top-level JSON value is not an object")
+    return data
+
+
+def safe_error(error: Exception) -> str:
+    """Describe a validation error without echoing values the document controls."""
+    if isinstance(error, EvalFailure):
+        message = re.sub(r"^(\$[^\s:]*): .* is outside enum$", r"\1: value is outside enum", str(error), flags=re.S)
+        message = re.sub(r"^(\$[^\s:]*): unexpected keys .*$", r"\1: unexpected keys", message, flags=re.S)
+        return " ".join(message.split())[:240]
+    if isinstance(error, json.JSONDecodeError):
+        return f"invalid JSON at line {error.lineno} column {error.colno}"
+    if isinstance(error, UnicodeDecodeError):
+        return "not valid UTF-8"
+    return type(error).__name__
+
+
 def validate_review_archive(relative_path: str, result: dict[str, Any], label: str) -> None:
     text = resolve_repo_path(relative_path, label).read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*(.*?)\s*```", text, flags=re.DOTALL)
-    require(blocks, f"{label}: review archive lacks a JSON block")
+    block = review_result_text(text)
+    require(block is not None, f"{label}: review archive lacks a JSON block")
     try:
-        archived_result = json.loads(blocks[-1])
+        archived_result = json.loads(block)
     except json.JSONDecodeError as error:
         raise EvalFailure(f"{label}: review archive JSON is invalid: {error}") from error
     require(archived_result == result, f"{label}: review archive disagrees with trace")
@@ -459,8 +530,9 @@ def execute_fixture_check(
     }
     require(asserted_calls.intersection(required_symbols), f"{label}: assertion does not call a target function")
     try:
+        # Fixtures name python3; run them with this interpreter, since some hosts only have `python`.
         completed = subprocess.run(
-            argv,
+            [sys.executable, *argv[1:]],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -502,7 +574,6 @@ def validate_gate_semantics(
         f"{label}: unnamed probe duplicates a named acceptance check",
     )
 
-    probe_results = [probe["result"] for probe in result["probes"]]
     for index, probe in enumerate(result["probes"]):
         execute_fixture_check(
             probe["check"],
@@ -512,6 +583,12 @@ def validate_gate_semantics(
             required_symbols,
             f"{label}.probes[{index}]",
         )
+    validate_gate_verdict(result, label)
+
+
+def validate_gate_verdict(result: dict[str, Any], label: str) -> None:
+    """The verdict must follow from the gate's own probes and findings."""
+    probe_results = [probe["result"] for probe in result["probes"]]
     if result["gate"] == "hold":
         require(all(item == "pass" for item in probe_results), f"{label}: held with a failed probe")
         require(not result["findings"], f"{label}: held with a new failed finding")
@@ -865,10 +942,30 @@ def validate_run_extensions(run: dict[str, Any], exit_reason: str | None, label:
         require(substitution["from"] != substitution["to"], f"{label}: model substitution changed nothing")
 
 
+def require_same_keys(example: Any, schema: dict[str, Any], root: dict[str, Any], path: str) -> None:
+    """An example in the instructions must use exactly the fields its schema defines."""
+    if "$ref" in schema:
+        schema = resolve_ref(root, schema["$ref"])
+    if isinstance(example, dict):
+        require(set(example) == set(schema["properties"]), f"{path}: example fields disagree with the schema")
+        for key, value in example.items():
+            require_same_keys(value, schema["properties"][key], root, f"{path}.{key}")
+    elif isinstance(example, list) and example and "items" in schema:
+        require_same_keys(example[0], schema["items"], root, f"{path}[0]")
+
+
+def validate_gate_example(skill_text: str) -> None:
+    examples = [body for info, body in fenced_blocks(skill_text) if info == ["json", "veriloop-gate"]]
+    require(len(examples) == 1, "run-review-loop skill must show exactly one gate result example")
+    schema = load_json(SCHEMA_DIR / "gate-result.schema.json")
+    require_same_keys(json.loads(examples[0]), schema, schema, "gate example")
+
+
 def validate_skill_contracts() -> None:
     text = (ROOT / "skills" / "run-review-loop" / "SKILL.md").read_text(encoding="utf-8")
     for label, pattern in SKILL_CONTRACTS.items():
         require(re.search(pattern, text) is not None, f"run-review-loop skill lost contract: {label}")
+    validate_gate_example(text)
     draft = (ROOT / "skills" / "draft-spec" / "SKILL.md").read_text(encoding="utf-8")
     for label, pattern in DRAFT_SPEC_CONTRACTS.items():
         require(re.search(pattern, draft) is not None, f"draft-spec skill lost contract: {label}")

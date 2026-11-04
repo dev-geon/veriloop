@@ -36,7 +36,8 @@ when the draft starts, `draft-` followed by the UTC start time
     python3 ../../scripts/report_progress.py --agent-review .agent-review --id ID \
       --flow draft --step STEP [--spec <IA.md path>] [--status STATUS]
 
-(the script path is relative to this skill). The steps are `survey` (Step 1), `design` (dispatching the design partner), `interview`
+(the script path is relative to this skill; where `python3` does not start Python, as on
+many Windows machines, use the interpreter that does, such as `python`). The steps are `survey` (Step 1), `design` (dispatching the design partner), `interview`
 (each question round, with `--status waiting_user` while the user answers), `draft`
 (Step 3), `preflight` (running the acceptance checks), `guess_hunt` (Step 4), and
 `confirm` (Step 5, `--status waiting_user`). Add `--spec` as soon as the `IA.md` path is
@@ -189,7 +190,10 @@ observation). Only loop-phase criteria decide whether the loop succeeds; the oth
 reported as deferred until someone runs them. Phrase a criterion against measured
 baseline facts (an existing warning count, already-failing tests, known flaky tests)
 rather than an ideal the baseline cannot meet, and make a search-based check exclude
-the specification and other documents that quote its own pattern.
+the specification and other documents that quote its own pattern. Have a check write its
+evidence outside the repository (a temporary path or the run's staging directory), never
+into the worktree: a file written there dirties every run and changes the digest that
+freezes the gate's target.
 
 **Invariant oracles.** When the work must hold an invariant over a space too large to
 enumerate by hand, or when `run-review-loop` routes here because an invariant kept

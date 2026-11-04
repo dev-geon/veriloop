@@ -237,9 +237,9 @@ class Archiver:
         """The last fenced JSON block of an archived review, validated like the contract evals do."""
         self.stage = f"validating review {name}"
         text = (self.partial / "reviews" / name).read_bytes().decode("utf-8")
-        blocks = re.findall(r"```json\s*(.*?)\s*```", text, flags=re.DOTALL)
-        require(blocks, f"reviews/{name}: no machine-readable JSON block")
-        result = parse_json(blocks[-1].encode("utf-8"))
+        block = contracts.review_result_text(text)
+        require(block is not None, f"reviews/{name}: no machine-readable JSON block")
+        result = parse_json(block.encode("utf-8"))
         contracts.validate_result("review", result)
         contracts.validate_review_semantics(result, f"reviews/{name}")
         return result

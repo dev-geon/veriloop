@@ -1,0 +1,2 @@
+# Evals hash fixture bytes, so checkouts must not convert line endings.
+* text=auto eol=lf

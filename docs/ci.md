@@ -64,6 +64,9 @@ review-loop instructions and schemas:
 python3 evals/run_contract_evals.py
 ```
 
+Where `python3` does not start Python, as on many Windows machines, use `python`; the
+suite runs its fixture commands with the interpreter that started it.
+
 It checks three controller traces: a clean diff held by late-bound probes, a seeded
 failure repaired before a fresh review identity, and a strict-blind capability failure
 that exits before code changes. It also verifies an explicitly authorized reduced-mode
@@ -93,7 +96,8 @@ match `scripts/check_prd.py` in both the skill and the reference), the Korean do
 rule, the single invariant-oracle definition in
 `skills/draft-spec/references/invariant-oracle.md`, and the requirement-quality rules
 (non-functional lens, permanent `AC-<n>` identifiers, one outcome per criterion, and the
-guess-hunt contradiction check).
+guess-hunt contradiction check). It also checks that the gate result example in the
+run-review-loop instructions uses exactly the fields of `schemas/gate-result.schema.json`.
 
 The trace model detects no progress by finding identity (file and title) and failed
 counts. Recurrence of the same invariant under a different title is a controller
@@ -111,6 +115,12 @@ worker); and only then moves the directory into place and, with `--delete-stagin
 removes the staging directories. Exit 1 means nothing was archived and staging is
 untouched. Exit 3 means the archive is complete but staging cleanup failed; finish the
 cleanup instead of archiving again.
+
+`scripts/check_review_result.py` validates one reviewer result (raw JSON, or a report
+ending in a ` ```json ` or ` ```json veriloop-review ` block), and
+`scripts/check_gate_result.py` validates one gate result: its schema, that the verdict
+follows from its probes and findings, and with `--snapshot` that it judged the frozen
+target. Both are read-only and never echo values from the document.
 
 `scripts/check_review_report.py` checks that a `REVIEW.md` ends with exactly one
 ` ```json veriloop-report ` block conforming to `schemas/review-report.schema.json` and
@@ -131,6 +141,7 @@ python3 evals/test_archive_run.py
 python3 evals/test_review_report.py
 python3 evals/test_prd.py
 python3 evals/test_progress.py
+python3 evals/test_result_cli.py
 ```
 
 This suite validates controller state, recorded identities, allowlisted fields, schemas,
