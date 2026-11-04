@@ -149,6 +149,35 @@ smallest relevant slice only when a check failed, the compact fields contradict 
 other, or the user requests the detail. Never send artifact contents or paths to a
 reviewer or gate.
 
+### Report progress and label every subagent
+
+People and host applications watch a running loop from outside it. Give them two
+signals that carry no review content:
+
+- **Label.** Begin every subagent's short description, the label the host shows, with
+  `veriloop <role>:` and then the batch or iteration, for example
+  `veriloop developer: batch 1`, `veriloop reviewer: iteration 2`, `veriloop fixer:
+  iteration 2`, `veriloop gate: final`. Use exactly the role names `developer`, `fixer`,
+  `reviewer`, and `gate`. The label never summarizes findings, probes, or reasoning.
+- **Progress record.** Choose one progress id when the loop starts, `work-` followed by
+  the UTC start time (`work-20261104T051200Z`), and reuse it for the whole run. Each
+  time the loop enters a step, run:
+
+      python3 ../../scripts/report_progress.py --agent-review .agent-review --id ID \
+        --flow work --step STEP --spec <IA.md path> [--iteration N] [--status STATUS]
+
+  (the script path is relative to this skill). The steps are `preflight` (goal contract and blind-mode checks), `develop`, `review`
+  (with `--iteration`), `fix`, `oracle` (escalating a recurring invariant), `gate`, and
+  `archive`. Pass `--status waiting_user` whenever the loop pauses for the user. After
+  archiving, record the exit once more: `--step archive --status done --exit-reason
+  goal_met`, or `--status stopped --exit-reason <exit>` for every other exit.
+
+The record lives in `.agent-review/progress/`, which the script keeps out of git. It is
+advisory: it never changes a verdict or a stop condition, and reviewers and gates do not
+read it (they already exclude `.agent-review/`). A short `--note` may say what the step
+is doing in one line; never put findings, probe content, or reasoning in it. If the
+script fails, report it once and continue the loop.
+
 ### Handle worker termination and results fail-closed
 
 Inspect the host delegation/tool status before reading the worker body. A reported
@@ -482,6 +511,9 @@ run record, moves the run directory into place, and deletes staging only after a
 that succeeded. Exit 1 means nothing was archived: keep the staging directories, fix
 the cause, and rerun it. Exit 3 means the archive is complete but staging cleanup
 failed: do not archive again; remove the remaining staging files yourself.
+
+Once the archive exists, record the exit in the progress record (see "Report progress
+and label every subagent").
 
 Write `run.json` to conform to `../../schemas/run-result.schema.json`, using the exact
 exit identifiers `goal_met`, `iteration_cap`, `no_progress`, and

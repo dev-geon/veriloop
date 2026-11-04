@@ -27,6 +27,28 @@ The deliverable is a spec document **the user has confirmed**. Until the user co
 and accepts the draft, there is no spec — do not let the caller (the review, the loop,
 or the user) proceed on an unconfirmed draft.
 
+## Progress and subagent labels
+
+Hosts and people watching the draft need to see where it stands. Choose one progress id
+when the draft starts, `draft-` followed by the UTC start time
+(`draft-20261104T050000Z`), and run this each time you enter a step:
+
+    python3 ../../scripts/report_progress.py --agent-review .agent-review --id ID \
+      --flow draft --step STEP [--spec <IA.md path>] [--status STATUS]
+
+(the script path is relative to this skill). The steps are `survey` (Step 1), `design` (dispatching the design partner), `interview`
+(each question round, with `--status waiting_user` while the user answers), `draft`
+(Step 3), `preflight` (running the acceptance checks), `guess_hunt` (Step 4), and
+`confirm` (Step 5, `--status waiting_user`). Add `--spec` as soon as the `IA.md` path is
+chosen, and finish with `--step confirm --status done` after the user confirms. The
+record is advisory and local (`.agent-review/progress/`, kept out of git); if the script
+fails, say so once and continue.
+
+Begin each subagent's short description with `veriloop designer:` or
+`veriloop guess-hunt:` followed by what it covers (for example
+`veriloop designer: booking overlap`). The label names the role only; it never carries
+draft content or findings.
+
 ## Step 1 — Analyze the codebase before interpreting the goal
 
 The spec must describe work that fits *this* repository, so establish the repository's

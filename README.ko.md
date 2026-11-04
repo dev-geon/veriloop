@@ -29,6 +29,22 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT 라이선스" /></a>
 </p>
 
+## 0.19.0 변경 사항
+
+이번 버전은 명세 작성과 루프가 지금 어느 단계인지, 어떤 서브에이전트가 무슨 일을 하는지 사람과 호스트 앱이 볼 수 있게 합니다.
+
+- **controller가 진행 상태를 기록합니다.**<br>
+  `draft-spec`과 `run-review-loop`이 단계에 들어갈 때마다 controller가 새 `scripts/report_progress.py`를 실행해 `.agent-review/progress/<id>.json`을 씁니다(형식: `schemas/progress.schema.json`). 명세 단계는 `survey`·`design`·`interview`·`draft`·`preflight`·`guess_hunt`·`confirm`, 루프 단계는 `preflight`·`develop`·`review`(반복 번호 포함)·`fix`·`oracle`·`gate`·`archive`이고 끝날 때 종료 이유를 남깁니다. 사용자 답을 기다리는 동안은 `waiting_user`로 기록합니다.<br>
+  이 기록은 참고용이고 로컬에만 둡니다. 스크립트가 폴더를 git에서 빼고, 판정이나 종료 조건을 바꾸지 않으며, 리뷰어와 게이트는 읽지 않습니다. 기록에 실패해도 실행은 멈추지 않습니다.
+- **모든 서브에이전트에 역할 이름을 붙입니다.**<br>
+  서브에이전트 설명은 `veriloop <역할>:`(`designer`·`guess-hunt`·`developer`·`fixer`·`reviewer`·`gate`)로 시작하고 배치나 반복 번호가 뒤따릅니다. 호스트는 이 이름으로 실행 중인 서브에이전트를 역할별로 보여 주고 각자 실제로 어떤 모델로 돌았는지 확인할 수 있습니다. 이름에는 리뷰 내용을 담지 않습니다.
+
+```sh
+python3 scripts/report_progress.py --agent-review .agent-review --id work-20261104T051200Z \
+  --flow work --step review --iteration 2 --spec docs/specs/fleet-fuel/IA.md
+python3 evals/test_progress.py
+```
+
 ## 0.18.0 변경 사항
 
 이번 버전은 명세 작성 중 인터뷰 질문 개수 제한을 없앱니다.
@@ -437,6 +453,7 @@ codex plugin add veriloop@veriloop
 | `.agent-review/config.json` | 루프 역할별 모델 설정 |
 | `.agent-review/ledger.json` | 반복을 가로지르는 finding 상태: open, Pass, recurred, accepted |
 | `.agent-review/runs/` | 완료된 실행 기록(`scripts/archive_run.py` 로 보관) |
+| `.agent-review/progress/` | 지금 진행 중인 명세 작성·루프의 단계(`scripts/report_progress.py` 가 기록, git 제외) |
 | 명세 옆 `DECISIONS.md` | 명세의 결정·개정 이력. reviewer 와 gate 는 읽지 않습니다 |
 
 ### 자동화 신뢰성

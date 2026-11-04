@@ -29,6 +29,22 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.19.0
+
+This release lets people and host apps see where a draft or loop currently is, and which subagent is doing what.
+
+- **The controller records live progress.**<br>
+  Each time `draft-spec` or `run-review-loop` enters a step, the controller runs the new `scripts/report_progress.py`, which writes `.agent-review/progress/<id>.json` (schema: `schemas/progress.schema.json`). The draft steps are `survey`, `design`, `interview`, `draft`, `preflight`, `guess_hunt`, and `confirm`; the loop steps are `preflight`, `develop`, `review` (with the iteration), `fix`, `oracle`, `gate`, and `archive`, ending with the exit reason. Pauses for the user are recorded as `waiting_user`.<br>
+  The record is advisory and local: the script keeps the directory out of git, it never changes a verdict or a stop condition, reviewers and gates do not read it, and a failure to write it does not stop the run.
+- **Every subagent is labeled with its role.**<br>
+  Subagent descriptions start with `veriloop <role>:` (`designer`, `guess-hunt`, `developer`, `fixer`, `reviewer`, `gate`) followed by the batch or iteration, so a host can list the run's subagents by role and check which model each one actually ran on. The label carries no review content.
+
+```sh
+python3 scripts/report_progress.py --agent-review .agent-review --id work-20261104T051200Z \
+  --flow work --step review --iteration 2 --spec docs/specs/fleet-fuel/IA.md
+python3 evals/test_progress.py
+```
+
 ## Changes in 0.18.0
 
 This release removes the cap on interview questions during specification.
@@ -436,6 +452,7 @@ The plugin discovers the repository's conventions at review time.
 | `.agent-review/config.json` | Per-role model routing |
 | `.agent-review/ledger.json` | Finding state across iterations: open, Pass, recurred, accepted |
 | `.agent-review/runs/` | Archived run records (written by `scripts/archive_run.py`) |
+| `.agent-review/progress/` | Live progress of the current draft or loop (written by `scripts/report_progress.py`, kept out of git) |
 | `DECISIONS.md` beside the spec | Decision and revision history of the spec; reviewers and gates do not read it |
 
 ### Automation reliability

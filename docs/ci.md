@@ -1,12 +1,13 @@
 # CI and hook integration
 
-Veriloop publishes five JSON Schema contracts:
+Veriloop publishes six JSON Schema contracts:
 
 - `schemas/worker-result.schema.json` — developer and fixer completion output;
 - `schemas/review-result.schema.json` — standalone review and PR gate output;
 - `schemas/gate-result.schema.json` — late-bound final gate output;
 - `schemas/run-result.schema.json` — archived `run.json` output;
-- `schemas/review-report.schema.json` — the single summary block at the end of `REVIEW.md`.
+- `schemas/review-report.schema.json` — the single summary block at the end of `REVIEW.md`;
+- `schemas/progress.schema.json` — the advisory live progress record under `.agent-review/progress/` (never a gate input).
 
 Use native structured output when the host supports it. Otherwise require raw JSON and
 validate it before reading the verdict. Never extract JSON from prose with a regular
@@ -129,6 +130,7 @@ with `--run-json`, that the run exited `goal_met`.
 python3 evals/test_archive_run.py
 python3 evals/test_review_report.py
 python3 evals/test_prd.py
+python3 evals/test_progress.py
 ```
 
 This suite validates controller state, recorded identities, allowlisted fields, schemas,
