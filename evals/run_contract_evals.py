@@ -94,6 +94,7 @@ SKILL_CONTRACTS = {
     "review result validator": r"scripts/check_review_result\.py",
     "gate result validator": r"scripts/check_gate_result\.py",
     "gate shape reaches the brief": r"Copy this shape into the gate's brief",
+    "harness dependencies before delegation": r"external dependencies draft-spec listed must still be reachable",
 }
 EXIT_DOCUMENT_CONTRACTS = {
     "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
@@ -122,6 +123,9 @@ DRAFT_SPEC_CONTRACTS = {
     "guess hunt checks contradictions": r"Do the committed sections contradict each other",
     "spec documents in Korean": r"Write `IA\.md` and `DECISIONS\.md` in Korean whatever language the conversation uses",
     "evidence outside the repository": r"evidence outside the repository",
+    "missing harness dependencies": r"A check whose harness does not exist yet proves nothing",
+    "post-deploy readiness note": r"Give every `post_deploy` criterion a readiness note",
+    "statements trace to criteria": r"Does every mandatory statement in Scope, Target behavior, and Constraints",
 }
 ORACLE_REFERENCE_CONTRACTS = {
     "oracle strength": r"The oracle is not\s+accepted until\s+it rediscovers all of them",

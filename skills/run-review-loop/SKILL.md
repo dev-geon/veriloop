@@ -40,9 +40,10 @@ items in the report. Never relabel a loop-phase check as deferred to get past it
 Before the first worker starts, rerun the specification's acceptance preflight (see
 draft-spec) when the baseline or environment changed since confirmation. Every
 loop-phase command must execute against the current baseline: a red result is
-expected, an unrunnable one is not. Stop and ask before delegation when a check cannot
-run, a permission or credential guard fails, or a baseline fact a criterion depends on
-has moved. Do not let a worker discover it in the middle of a batch.
+expected, an unrunnable one is not. For a check whose harness does not exist yet, the
+external dependencies draft-spec listed must still be reachable. Stop and ask before
+delegation when a check cannot run, a permission or credential guard fails, or a baseline
+fact a criterion depends on has moved. Do not let a worker discover it in the middle of a batch.
 
 Add a runtime smoke check when the specification covers a runnable service and the
 repository has a safe, inexpensive local start path.
@@ -587,7 +588,8 @@ Report:
 - every resolved finding as Pass;
 - every remaining warning and its required disposition: accept, file an issue, or
   clean up now;
-- every deferred post-deploy or manual criterion, and who closes it and how.
+- every deferred post-deploy or manual criterion, and who closes it and how, starting
+  from its readiness note in the specification.
 
 The controller alone writes loop reports and archives; reviewer/gate/fixer outputs
 do not mutate these files. Keep prior run archives immutable and link preceding runs

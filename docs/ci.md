@@ -96,7 +96,8 @@ match `scripts/check_prd.py` in both the skill and the reference), the Korean do
 rule, the single invariant-oracle definition in
 `skills/draft-spec/references/invariant-oracle.md`, and the requirement-quality rules
 (non-functional lens, permanent `AC-<n>` identifiers, one outcome per criterion, and the
-guess-hunt contradiction check). It also checks that the gate result example in the
+guess-hunt contradiction and statement-tracing checks), and the preflight rules for a
+missing harness and for `post_deploy` readiness. It also checks that the gate result example in the
 run-review-loop instructions uses exactly the fields of `schemas/gate-result.schema.json`.
 
 The trace model detects no progress by finding identity (file and title) and failed
