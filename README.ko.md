@@ -29,6 +29,37 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT 라이선스" /></a>
 </p>
 
+## 0.20.0 변경 사항
+
+이번 버전은 긴 실행에서 드러난 비효율을 줄입니다. 구현 중반에야 드러나던 문제를 명세 확정 전으로 당기고, 결과 전달과 수리 검증의 중복을 없앱니다.
+
+- **명세를 어긴 코드는 AC가 없어도 Failed입니다.**<br>
+  코드로 확인된 범위·목표 동작·제약 문장 위반은 Warning으로 게이트까지 가지 않고 리뷰에서 수리로 넘어갑니다. 일반 경고는 지금처럼 루프를 돌리지 않습니다.
+- **사전 실행이 실제 경로를 확인합니다.**<br>
+  아직 없는 하네스가 "미구현"으로 실패하는 것은 실행 가능의 근거가 되지 않습니다. draft-spec이 실제 경로에 필요한 외부 의존을 나열하고, 검증 환경에서 닿는지 읽기 전용으로 확인합니다.
+- **`post_deploy` 기준에 준비 메모를 씁니다.**<br>
+  입력을 어떻게 만드는지, 범위를 어떻게 제한하는지, 필요한 권한을 누가 줄 수 있는지, 어떻게 되돌리는지를 명세 확정 전에 답합니다.
+- **필수 문장마다 AC를 확인합니다.**<br>
+  추측 사냥이 범위·목표 동작·제약의 필수 문장에 대응하는 수용 기준이 있는지 봅니다.
+- **결과를 파일로 주고받습니다.**<br>
+  작업자·리뷰어·게이트가 발급받은 경로에 결과를 쓰고 경로와 digest만 돌려주므로(`schemas/result-pointer.schema.json`), controller가 내용을 다시 옮겨 적지 않습니다. 파일을 쓸 수 없는 호스트에서는 지금처럼 응답으로 받습니다.
+- **리뷰·게이트 결과 검증기를 추가했습니다.**<br>
+  `scripts/check_review_result.py`와 `scripts/check_gate_result.py`입니다. 게이트 지침에 필드 모양을 직접 넣었고, 예시가 스키마와 어긋나면 평가가 실패합니다.
+- **반복 수 계산을 명시했습니다.**<br>
+  반복 하나는 리뷰 1회, 성공 후보면 게이트, 그 뒤의 수리까지입니다. failed count는 리뷰 기준으로 세고, 게이트 실패의 되풀이는 불변식 기준 `recurred`와 3회 상한이 잡습니다. `run.json`의 `iterations`에 `gate` 선택 필드를 더했습니다.
+- **사전 승인한 경우 같은 run에서 후속 작업자를 한 번 쓸 수 있습니다.**<br>
+  `.agent-review/config.json`에 `preauthorized_successor: true`를 둔 경우에만, 호스트가 작업자를 멈춘 `timeout`·`cancelled`에 한해 적용합니다. 설정이 없으면 지금처럼 run이 끝나고 사용자에게 묻습니다.
+- **역할 지침을 다듬었습니다.**<br>
+  fixer는 지적 재현·수정 확인·직접 영향 테스트까지 맡고, 누적 전체 검사는 controller가 돌립니다. 실행 증거는 대상 작업 트리 밖에 씁니다. 작업자 브리프에 호스트의 명령 시간 제한과 백그라운드 규칙을 적습니다.
+- **고친 것.**<br>
+  `scripts/archive_run.py`가 스킬이 요구하는 `json veriloop-review` 펜스를 읽지 못하던 문제와, 지침이 게이트 필드를 `verdict`로 잘못 적던 문제를 고쳤습니다. Windows에서도 평가가 돕니다(`.gitattributes`로 LF 고정, 현재 인터프리터로 fixture 실행).
+
+```sh
+python3 scripts/check_review_result.py reviewer-2-1.md --sha256 <digest>
+python3 scripts/check_gate_result.py gate-2-1.json --snapshot <id> --sha256 <digest>
+python3 evals/test_result_cli.py
+```
+
 ## 0.19.0 변경 사항
 
 이번 버전은 명세 작성과 루프가 지금 어느 단계인지, 어떤 서브에이전트가 무슨 일을 하는지 사람과 호스트 앱이 볼 수 있게 합니다.

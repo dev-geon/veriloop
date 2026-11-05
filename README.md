@@ -29,6 +29,37 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.20.0
+
+This release reduces the waste that long runs exposed. Problems that used to surface in the middle of implementation now surface before a spec is confirmed, and results and repairs no longer do the same work twice.
+
+- **Code that violates the spec is Failed, with or without an AC.**<br>
+  A confirmed contradiction of a Scope, Target behavior, or Constraints statement goes to repair from the review instead of reaching the gate as a Warning. Other warnings still do not keep the loop running.
+- **The preflight checks the real path.**<br>
+  A harness that does not exist yet and fails with "not implemented" is no evidence that a check can run. draft-spec lists the external dependencies the real path needs and confirms, read-only, that the verification environment can reach them.
+- **`post_deploy` criteria get a readiness note.**<br>
+  Before confirmation the spec answers how the input is produced, how the run is bounded, who can grant the access it needs, and how it is undone.
+- **Every mandatory statement is traced to an AC.**<br>
+  The guess-hunt checks that each mandatory Scope, Target behavior, and Constraints statement has an acceptance criterion.
+- **Results travel as files.**<br>
+  Workers, reviewers, and gates write to an issued path and return only the path and digest (`schemas/result-pointer.schema.json`), so the controller no longer retypes them. Hosts that cannot write the file keep returning the result as the response.
+- **New reviewer and gate result validators.**<br>
+  `scripts/check_review_result.py` and `scripts/check_gate_result.py`. The gate instructions now show the field shape, and the evals fail if that example drifts from the schema.
+- **Iteration counting is defined.**<br>
+  One iteration is one review, the gate when that review makes a success candidate, and the repair that follows. The failed count comes from the review; a recurring gate failure is caught by invariant-based `recurred` and the three-iteration cap. `iterations` in `run.json` gains an optional `gate` field.
+- **One pre-authorized successor in the same run.**<br>
+  Only with `preauthorized_successor: true` in `.agent-review/config.json`, and only after a host-caused stop (`timeout` or `cancelled`). Without it, the run ends and the user is asked, as before.
+- **Sharper role instructions.**<br>
+  A fixer stops at reproducing the finding, verifying the repair, and running directly affected tests; the controller runs the cumulative set. Run evidence stays outside the target worktree. Worker briefs state the host's command time limit and background rules.
+- **Fixes.**<br>
+  `scripts/archive_run.py` could not read the `json veriloop-review` fence the skills require, and the instructions misnamed the gate field as `verdict`. The evals now run on Windows (LF fixed by `.gitattributes`, fixtures run with the current interpreter).
+
+```sh
+python3 scripts/check_review_result.py reviewer-2-1.md --sha256 <digest>
+python3 scripts/check_gate_result.py gate-2-1.json --snapshot <id> --sha256 <digest>
+python3 evals/test_result_cli.py
+```
+
 ## Changes in 0.19.0
 
 This release lets people and host apps see where a draft or loop currently is, and which subagent is doing what.
