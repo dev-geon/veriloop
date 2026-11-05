@@ -46,7 +46,7 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
 - **리뷰·게이트 결과 검증기를 추가했습니다.**<br>
   `scripts/check_review_result.py`와 `scripts/check_gate_result.py`입니다. 게이트 지침에 필드 모양을 직접 넣었고, 예시가 스키마와 어긋나면 평가가 실패합니다.
 - **반복 수 계산을 명시했습니다.**<br>
-  반복 하나는 리뷰 1회, 성공 후보면 게이트, 그 뒤의 수리까지입니다. failed count는 리뷰 기준으로 세고, 게이트 실패의 되풀이는 불변식 기준 `recurred`와 3회 상한이 잡습니다. `run.json`의 `iterations`에 `gate` 선택 필드를 더했습니다.
+  반복 하나는 리뷰 1회, 성공 후보면 게이트, 그 뒤의 수리까지입니다. failed count는 리뷰 기준으로 세되 게이트 수리 직후 리뷰는 개수를 비교하지 않고, 실패의 되풀이는 불변식 기준 `recurred`와 3회 상한이 잡습니다. `run.json`의 `iterations`에 `gate` 선택 필드를 더했습니다.
 - **사전 승인한 경우 같은 run에서 후속 작업자를 한 번 쓸 수 있습니다.**<br>
   `.agent-review/config.json`에 `preauthorized_successor: true`를 둔 경우에만, 호스트가 작업자를 멈춘 `timeout`·`cancelled`에 한해 적용합니다. 설정이 없으면 지금처럼 run이 끝나고 사용자에게 묻습니다.
 - **역할 지침을 다듬었습니다.**<br>

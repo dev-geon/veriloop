@@ -473,8 +473,9 @@ are not counted, because each gate generates new probes and their counts cannot 
 compared. A gate finding can still recur: it enters the ledger like any other, so a later
 Failed finding with the same invariant, in a review or a gate, is recurred and stops the
 loop. A review with no Failed findings never counts as no progress, whatever the previous
-count was. Because a gate runs only after a review with no Failed findings, any Failed
-finding in the review after a gate repair counts as no progress.
+count was. The review right after a gate repair is not compared by count either: a gate runs
+only after a review with no Failed findings, so that review has no count to improve on.
+Recurrence and the three-iteration cap still stop the loop.
 
 A user-authorized follow-up run does not erase the previous lack of progress. Before
 restarting, state the repeated invariant, why the previous approach was insufficient,

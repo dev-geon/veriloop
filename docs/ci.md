@@ -111,7 +111,7 @@ missing harness and for `post_deploy` readiness. It also checks that the gate re
 run-review-loop instructions uses exactly the fields of `schemas/gate-result.schema.json`.
 
 The trace model detects no progress by finding identity (file and title) and failed
-counts. Recurrence of the same invariant under a different title is a controller
+counts, leaving the review right after a gate repair out of the count comparison. Recurrence of the same invariant under a different title is a controller
 judgment recorded in the ledger; the trace evaluator does not model it.
 
 ## Run archiving and REVIEW.md validation

@@ -110,7 +110,7 @@ SKILL_CONTRACTS = {
     "result names hide the iteration": r"never the iteration",
     "user stop has no successor": r"A stop the user asked for",
     "no repair at the cap": r"Iteration three has no repair",
-    "no progress after a gate repair": r"any Failed\s+finding in the review after a gate repair",
+    "count comparison skips a gate repair": r"review right after a gate repair is not compared by count",
     "digest confirms the result file": r"passing the pointer's digest",
     "one pre-authorized successor": r"`preauthorized_successor: true`[\s\S]+?An assignment gets at most one",
     "pre-authorized successor is narrow": r"`timeout` or `cancelled` and `needs_user_input: false`",
@@ -725,6 +725,7 @@ def validate_case(case: dict[str, Any]) -> None:
     last_worker_was_successor = False
     traced_successions: list[tuple[str, str]] = []
     seen_gate_findings: set[tuple[str, str]] = set()
+    gate_repair_pending = False
     latest_acceptance: dict[str, tuple[int, str]] = {}
     latest_review: str | None = None
     pending_fix_source: str | None = None
@@ -871,12 +872,13 @@ def validate_case(case: dict[str, Any]) -> None:
             failed_findings = [item for item in event["result"]["findings"] if item["severity"] == "failed"]
             failed_keys = {(item["file"], item["title"]) for item in failed_findings}
             if failed_findings:
-                if previous_failed_count is not None:
+                if previous_failed_count is not None and not gate_repair_pending:
                     detected_no_progress = len(failed_findings) >= previous_failed_count
                 detected_no_progress = detected_no_progress or bool(failed_keys & (passed_failed_findings | seen_gate_findings))
             passed_failed_findings.update(active_failed_findings - failed_keys)
             active_failed_findings = failed_keys
             previous_failed_count = len(failed_findings)
+            gate_repair_pending = False
             reviews.append(event)
             latest_review = event["result"]["verdict"]
             reviewed_revision = revision
@@ -914,6 +916,7 @@ def validate_case(case: dict[str, Any]) -> None:
             gate_findings = {(item["file"], item["title"]) for item in event["result"]["findings"]}
             detected_no_progress = detected_no_progress or bool(gate_findings & (seen_gate_findings | passed_failed_findings))
             seen_gate_findings |= gate_findings
+            gate_repair_pending = event["result"]["gate"] == "fail"
             gate_results.append(event["result"])
             gate_revision = revision
             gate_count += 1
@@ -1741,6 +1744,19 @@ def run_extension_tests(cases: list[dict[str, Any]]) -> tuple[int, int]:
         run["acceptance"] = run["acceptance"] * 2
         return case
 
+    def with_new_failure_after_gate_repair() -> dict[str, Any]:
+        case = with_recurring_gate()
+        run = case["run_result"]
+        review_file = "evals/fixtures/archives/after-gate-review-failed.md"
+        failed_review = json.loads(final_result_text(resolve_repo_path(review_file, "fixture").read_text(encoding="utf-8"), REVIEW_FENCE_INFOS))
+        reviews = [event for event in case["events"] if event["type"] == "review"]
+        reviews[-1]["result"] = failed_review
+        position = next(index for index, event in enumerate(case["events"]) if event is reviews[-1])
+        case["events"] = [*case["events"][: position + 1], {"type": "exit", "reason": "no_progress"}]
+        run["gate_files"] = run["gate_files"][:1]
+        run["iterations"][1].update(verdict="fail", failed_count=1, warning_count=0, review_file=review_file)
+        return case
+
     def with_repair_after_third_review() -> dict[str, Any]:
         case = copy.deepcopy(base)
         developer = next(event for event in case["events"] if event["type"] == "developer_change")
@@ -1811,6 +1827,7 @@ def run_extension_tests(cases: list[dict[str, Any]]) -> tuple[int, int]:
             (second, "second successor for one assignment", "does not allow a same-run successor"),
             (continued_after_recurrence, "repair after a gate finding recurred", "work continued after no progress"),
             (with_repair_after_third_review(), "repair after the third review", "would never be reviewed"),
+            (with_new_failure_after_gate_repair(), "no-progress exit on a new failure after a gate repair", "no-progress exit lacks"),
         ]
 
     for case, label, reason in rejected_cases():

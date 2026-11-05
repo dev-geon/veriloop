@@ -46,7 +46,7 @@ This release reduces the waste that long runs exposed. Problems that used to sur
 - **New reviewer and gate result validators.**<br>
   `scripts/check_review_result.py` and `scripts/check_gate_result.py`. The gate instructions now show the field shape, and the evals fail if that example drifts from the schema.
 - **Iteration counting is defined.**<br>
-  One iteration is one review, the gate when that review makes a success candidate, and the repair that follows. The failed count comes from the review; a recurring gate failure is caught by invariant-based `recurred` and the three-iteration cap. `iterations` in `run.json` gains an optional `gate` field.
+  One iteration is one review, the gate when that review makes a success candidate, and the repair that follows. The failed count comes from the review and skips the review right after a gate repair; a recurring failure is caught by invariant-based `recurred` and the three-iteration cap. `iterations` in `run.json` gains an optional `gate` field.
 - **One pre-authorized successor in the same run.**<br>
   Only with `preauthorized_successor: true` in `.agent-review/config.json`, and only after a host-caused stop (`timeout` or `cancelled`). Without it, the run ends and the user is asked, as before.
 - **Sharper role instructions.**<br>
