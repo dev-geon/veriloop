@@ -68,7 +68,17 @@
           },
           "failed_count": { "type": "integer", "minimum": 0 },
           "warning_count": { "type": "integer", "minimum": 0 },
-          "review_file": { "type": "string", "minLength": 1 }
+          "review_file": { "type": "string", "minLength": 1 },
+          "gate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "failed_count", "gate_file"],
+            "properties": {
+              "status": { "type": "string", "enum": ["hold", "fail", "blocked"] },
+              "failed_count": { "type": "integer", "minimum": 0 },
+              "gate_file": { "type": "string", "minLength": 1 }
+            }
+          }
         }
       }
     },
@@ -126,7 +136,8 @@
           "predecessor": { "type": "string", "minLength": 1 },
           "successor": { "type": "string", "minLength": 1 },
           "reason": { "type": "string", "minLength": 1 },
-          "authorization": { "type": "string", "minLength": 1 }
+          "authorization": { "type": "string", "minLength": 1 },
+          "scope": { "type": "string", "enum": ["follow_up", "same_run"] }
         }
       }
     },

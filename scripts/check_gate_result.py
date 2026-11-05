@@ -15,9 +15,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("result", type=Path)
     parser.add_argument("--snapshot", help="the frozen snapshot identifier the gate was given")
+    parser.add_argument("--sha256", help="the digest the gate's result pointer named")
     args = parser.parse_args()
     try:
-        data = contracts.parse_json_object(args.result.read_bytes())
+        raw = args.result.read_bytes()
+        contracts.require_digest(raw, args.sha256)
+        data = contracts.parse_json_object(raw)
         contracts.validate_result("gate", data)
         contracts.validate_gate_verdict(data, "gate")
         if args.snapshot is not None:

@@ -1,13 +1,14 @@
 # CI and hook integration
 
-Veriloop publishes six JSON Schema contracts:
+Veriloop publishes seven JSON Schema contracts:
 
 - `schemas/worker-result.schema.json` — developer and fixer completion output;
 - `schemas/review-result.schema.json` — standalone review and PR gate output;
 - `schemas/gate-result.schema.json` — late-bound final gate output;
 - `schemas/run-result.schema.json` — archived `run.json` output;
 - `schemas/review-report.schema.json` — the single summary block at the end of `REVIEW.md`;
-- `schemas/progress.schema.json` — the advisory live progress record under `.agent-review/progress/` (never a gate input).
+- `schemas/progress.schema.json` — the advisory live progress record under `.agent-review/progress/` (never a gate input);
+- `schemas/result-pointer.schema.json` — the final response of a role whose result travels as a file.
 
 Use native structured output when the host supports it. Otherwise require raw JSON and
 validate it before reading the verdict. Never extract JSON from prose with a regular
@@ -87,8 +88,15 @@ invariant oracle, and a worker succession recorded by a follow-up run, and rejec
 extension mutations: a loop-phase criterion hidden as deferred, a post-deploy criterion
 claimed inside the loop, `goal_met` with a failing oracle, `goal_met` with an oracle that
 missed a historical failure, a succession to an unarchived worker, a succession inside
-one run (which would bypass the fail-closed worker exit), and a succession from a run
-that is not listed in `preceding_runs`. It also checks that the run-review-loop and
+one run without `scope: same_run` (which would bypass the fail-closed worker exit), and a
+succession from a run that is not listed in `preceding_runs`.
+
+Since 0.20.0 it also accepts an iteration's `gate` result, a pre-authorized successor in the
+same run, and a result path in a blind brief, and rejects their misuse: an iteration gate that
+disagrees with the run or is not archived, a successor after a stop the host did not cause, one
+without the exact authorization or without the trace's successor flag, a second successor for
+one assignment, a same-run succession the trace did not perform, and a result pointer with
+surrounding prose, another path, an extra field, or a malformed digest. It also checks that the run-review-loop and
 draft-spec instructions still contain the preflight, phase, oracle, stall, succession,
 temporary-path and archive rules, the report-block and product-document rules in
 `skills/run-review-loop/references/exit-documents.md`, the PRD chapter list (which must
@@ -110,9 +118,11 @@ judgment recorded in the ledger; the trace evaluator does not model it.
 worker results, gate results, and review files; copies every declared artifact under
 its staging-relative path and verifies its byte count and SHA-256 before and after the
 copy; rewrites archived paths relative to the run directory; validates each worker result, gate result, review JSON
-block (against its iteration's verdict and counts), and the run record (deferred phases,
-oracle strength, succession references, and the fail-closed exit after an incomplete
-worker); and only then moves the directory into place and, with `--delete-staging`,
+block (against its iteration's verdict and counts), each iteration's `gate` result (against
+its archived gate), and the run record (deferred phases, oracle strength, succession
+references, and the fail-closed exit after an incomplete worker, which a same-run successor
+may lift only when `.agent-review/config.json` sets `preauthorized_successor: true` and the
+predecessor stopped with `timeout` or `cancelled`); and only then moves the directory into place and, with `--delete-staging`,
 removes the staging directories. Exit 1 means nothing was archived and staging is
 untouched. Exit 3 means the archive is complete but staging cleanup failed; finish the
 cleanup instead of archiving again.
@@ -121,7 +131,9 @@ cleanup instead of archiving again.
 ending in a ` ```json ` or ` ```json veriloop-review ` block), and
 `scripts/check_gate_result.py` validates one gate result: its schema, that the verdict
 follows from its probes and findings, and with `--snapshot` that it judged the frozen
-target. Both are read-only and never echo values from the document.
+target. Both are read-only and never echo values from the document. Both, and
+`scripts/check_worker_result.py`, take `--sha256` to confirm that the file is the one a
+role's result pointer named.
 
 `scripts/check_review_report.py` checks that a `REVIEW.md` ends with exactly one
 ` ```json veriloop-report ` block conforming to `schemas/review-report.schema.json` and

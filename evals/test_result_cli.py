@@ -1,5 +1,6 @@
 """Regression checks for the reviewer and gate result validation commands."""
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,7 +23,7 @@ checks = 0
 def run(script, payload, *extra):
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / 'result.txt'
-        path.write_text(payload if isinstance(payload, str) else json.dumps(payload), encoding='utf-8')
+        path.write_bytes((payload if isinstance(payload, str) else json.dumps(payload)).encode('utf-8'))
         return subprocess.run([sys.executable, str(ROOT / 'scripts' / script), str(path), *extra],
                               capture_output=True, text=True, encoding='utf-8', env=ENV)
 
@@ -34,6 +35,10 @@ def expect(script, payload, valid, label, *extra, reason=None):
     if reason:
         assert reason in result.stderr, (label, result.stderr)
     checks += 1
+
+
+def digest(payload):
+    return hashlib.sha256((payload if isinstance(payload, str) else json.dumps(payload)).encode('utf-8')).hexdigest()
 
 
 def report(value, info='json'):
@@ -53,7 +58,12 @@ expect(REVIEW, {'verdict': 'fail', 'findings': []}, False, 'fail without a findi
 expect(REVIEW, {'verdict': 'fail', 'findings': [dict(FINDING, repair_plan='fix it')]}, False, 'repair plan as a string', reason='repair_plan')
 expect(REVIEW, '{"verdict": "pass", "verdict": "pass", "findings": []}', False, 'duplicate key', reason='duplicate JSON key')
 
+expect(REVIEW, report(PASSED), True, 'the file the pointer named', '--sha256', digest(report(PASSED)))
+expect(REVIEW, report(PASSED), False, 'another file than the pointer named', '--sha256', '0' * 64, reason='result digest mismatch')
+
 GATE_SCRIPT = 'check_gate_result.py'
+expect(GATE_SCRIPT, GATE, True, 'the file the pointer named', '--sha256', digest(GATE))
+expect(GATE_SCRIPT, GATE, False, 'another file than the pointer named', '--sha256', '0' * 64, reason='result digest mismatch')
 expect(GATE_SCRIPT, GATE, True, 'clean gate')
 expect(GATE_SCRIPT, GATE, True, 'matching snapshot', '--snapshot', GATE['snapshot'])
 expect(GATE_SCRIPT, GATE, False, 'other snapshot', '--snapshot', 'sha256:other', reason='different snapshot')

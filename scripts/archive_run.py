@@ -91,6 +91,7 @@ class Archiver:
         args = self.args
         agent_review = Path(args.agent_review).resolve()
         require(agent_review.is_dir(), "--agent-review is not a directory")
+        self.agent_review = agent_review
         runs = agent_review / "runs"
         self.staging = []
         for item in args.staging:
@@ -120,6 +121,7 @@ class Archiver:
         self.partial = partial
 
         self.worker_results = []
+        self.gate_results = {}
         worker_files = [self.archive_worker(path) for path in workers]
         gate_files = [self.archive_gate(path) for path in gates]
         review_names = [self.copy_review(path) for path in reviews]
@@ -137,6 +139,9 @@ class Archiver:
                 require(name in copied, f"iterations[{index}].review_file is not an archived review")
                 iteration["review_file"] = copied[name]
                 self.check_iteration(index, iteration, self.review_results[name])
+            slot = iteration.get("gate") if isinstance(iteration, dict) else None
+            if isinstance(slot, dict) and isinstance(slot.get("gate_file"), str):
+                self.check_iteration_gate(index, slot)
         contracts.validate_result("run", run)
         self.check_run_semantics(run, worker_files)
         contracts.validate_result("run", run)
@@ -219,7 +224,9 @@ class Archiver:
         name = source.name
         self.stage = f"validating gate {name}"
         raw = source.read_bytes()
-        contracts.validate_result("gate", parse_json(raw))
+        data = parse_json(raw)
+        contracts.validate_result("gate", data)
+        self.gate_results[name] = data
         (self.partial / "gates").mkdir(exist_ok=True)
         with (self.partial / "gates" / name).open("xb") as handle:
             handle.write(raw)
@@ -256,9 +263,40 @@ class Archiver:
             f"iterations[{index}]: warning_count disagrees with its review",
         )
 
+    def check_iteration_gate(self, index, slot):
+        name = basename(slot["gate_file"])
+        require(name in self.gate_results, f"iterations[{index}].gate.gate_file is not an archived gate")
+        slot["gate_file"] = f"gates/{name}"
+        result = self.gate_results[name]
+        require(slot.get("status") == result["gate"], f"iterations[{index}]: gate status disagrees with its gate result")
+        require(slot.get("failed_count") == len(result["findings"]), f"iterations[{index}]: gate failed_count disagrees with its gate result")
+
+    def successor_preauthorized(self):
+        config = self.agent_review / "config.json"
+        return config.is_file() and parse_json(config.read_bytes()).get("preauthorized_successor") is True
+
+    def same_run_predecessors(self, run, worker_files):
+        """Positions of the stopped workers a same-run successor may continue, with their paths rewritten."""
+        names = [basename(path) for path in worker_files]
+        positions = set()
+        for index, succession in enumerate(run.get("worker_successions", [])):
+            if succession.get("scope") != "same_run":
+                continue
+            name = basename(succession["predecessor"])
+            require(name in names, f"worker_successions[{index}].predecessor is not an archived worker result")
+            require(self.successor_preauthorized(), f"worker_successions[{index}]: config.json does not set preauthorized_successor")
+            position = names.index(name)
+            require(contracts.stop_allows_successor(self.worker_results[position]),
+                    f"worker_successions[{index}]: the predecessor did not stop for a host-caused reason")
+            succession["predecessor"] = worker_files[position]
+            positions.add(position)
+        return positions
+
     def check_run_semantics(self, run, worker_files):
         # Fail-closed: an incomplete worker ends the run and decides its exit reason.
-        incomplete = [index for index, data in enumerate(self.worker_results) if data["status"] != "completed"]
+        continued = self.same_run_predecessors(run, worker_files)
+        incomplete = [index for index, data in enumerate(self.worker_results)
+                      if data["status"] != "completed" and index not in continued]
         if incomplete:
             require(len(incomplete) == 1 and incomplete[0] == len(self.worker_results) - 1,
                     "work continued after an incomplete worker")

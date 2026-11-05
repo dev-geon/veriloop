@@ -66,14 +66,15 @@ group. In a legacy-only file, `designer` inherits the legacy `reviewer` settings
 the legacy `gate` settings, before falling back to the current session model. Do not
 rewrite an existing role configuration unless the user asks to migrate it.
 
-Two optional keys may be added when the user asks for them:
+Three optional keys may be added when the user asks for them:
 
     {
       "fallback_models": {
         "design_review_gate": "<exact model id>",
         "worker": "<exact model id>"
       },
-      "stall_minutes": 20
+      "stall_minutes": 20,
+      "preauthorized_successor": true
     }
 
 `fallback_models` records substitutions the user authorizes in advance for a model
@@ -81,7 +82,10 @@ group whose configured model is unavailable or rate-limited; `run-review-loop` l
 resolved role and group for every use. A role-specific fallback remains accepted for
 backward compatibility. Omit a group or role to keep "stop and ask" for it.
 `stall_minutes` is how long a worker may show no progress before it is treated as
-stalled (default 20). Never fill either key by guessing.
+stalled (default 20). `preauthorized_successor` authorizes, in advance, one successor in
+the same run when the host stops a worker (termination `timeout` or `cancelled`); omit it to
+keep the follow-up run and the question to the user. Never fill any of these keys by
+guessing.
 
 Create .agent-review/ledger.json with {"findings": []} only when it is absent.
 Never overwrite an existing ledger.

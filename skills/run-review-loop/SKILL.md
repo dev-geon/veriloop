@@ -99,8 +99,8 @@ Keep each role to one responsibility and request only the capabilities it needs:
 | designer | repository facts, user goal, decision surface, explicit constraints | proposals, trade-offs, verifiable implementation design, and interview questions | brainstorm and clarify the contract; never silently decide or edit target files |
 | developer | spec, goal, current batch, scope, checks | schema-valid worker result | read/write target and run required checks; no review history or gate material |
 | fixer | Failed findings or minimal gate failure packet | schema-valid worker result | read/write target and run required checks; no passed probes |
-| reviewer | strict-blind allowlist below | review result with a repair plan for every finding | read/search target and run safe checks; never write target or cause external side effects |
-| gate | reviewer allowlist plus snapshot | gate result with a repair plan for every Failed finding | read/search frozen target and use isolated temporary tests; never write target or fix |
+| reviewer | strict-blind allowlist below | review result with a repair plan for every finding | read/search target, run safe checks, and write only its issued result file; never write target or cause external side effects |
+| gate | reviewer allowlist plus snapshot | gate result with a repair plan for every Failed finding | read/search frozen target, use isolated temporary tests, and write only its issued result file; never write target or fix |
 
 Use host-enforced read/write or tool allowlists when available. Otherwise state the
 same boundary in the role brief; strict blind mode still describes context isolation,
@@ -163,6 +163,33 @@ smallest relevant slice only when a check failed, the compact fields contradict 
 other, or the user requests the detail. Never send artifact contents or paths to a
 reviewer or gate.
 
+### Receive results as files
+
+A result the controller has to retype costs its tokens twice and invites copying errors,
+so results travel as files. Before the first delegation, create one results directory for
+the run, `<tmp>/veriloop-<run>-results/`, outside the target worktree and separate from the
+temporary workspaces (which are removed when a role exits) and from artifact staging. Issue
+every developer, fixer, reviewer, and gate attempt its own `result_path` there, named for
+the role, iteration, and attempt (`fixer-2-1.json`, `reviewer-2-1.md`, `gate-2-1.json`). A
+role is told only its own path and never reads the directory.
+
+A worker or gate writes its complete JSON object to that path, without a fence. A reviewer
+writes its prose report ending in the JSON block. Each role then ends with a final response
+that is only this raw pointer object, conforming to
+`../../schemas/result-pointer.schema.json`:
+
+    {"result_path": "<issued path>", "bytes": 1234, "sha256": "<64 lowercase hex>"}
+
+Inspect the host status first, as always. Then confirm that `result_path` is the path you
+issued, and validate the file by passing the pointer's digest to the role's validator as
+`--sha256`; `check_worker_result.py`, `check_review_result.py`, and `check_gate_result.py`
+all accept it. A mismatch makes the result invalid. Read the verdict from the validated file
+instead of copying it into a new one, and hand that same file to `archive_run.py`.
+
+When the host supplies native structured output, or cannot let a role write to the issued
+path, the whole result is the role's final response instead, and the controller saves it
+once, byte for byte, as received.
+
 ### Report progress and label every subagent
 
 People and host applications watch a running loop from outside it. Give them two
@@ -198,13 +225,14 @@ Inspect the host delegation/tool status before reading the worker body. A report
 timeout, cancellation, context limit, or tool failure is authoritative; never infer
 completion from a partial message or changed worktree. Record a compact synthetic
 worker result with the matching termination and blocker, then exit as `worker_blocked`
-or `worker_failed`.
+or `worker_failed`, unless a pre-authorized successor applies (see below).
 
-Require every developer and fixer response to conform to
+Require every developer and fixer result to conform to
 `../../schemas/worker-result.schema.json`. Use native structured output when the host
-supports it. Otherwise require the entire final response to be one raw JSON object
-without prose or fences, parse the whole response with a JSON parser, and validate the
-schema. Never extract JSON from mixed prose with a regular expression.
+supports it. Otherwise receive it as a file (see "Receive results as files"), or, when the
+host cannot write that file, require the entire final response to be one raw JSON object
+without prose or fences. Parse the whole pointer or object with a JSON parser and validate
+the schema. Never extract JSON from mixed prose with a regular expression.
 
 For a normally returned but invalid object, allow one format-only retry in the same
 worker context. Give only the schema and validation error; do not rerun tools, edit
@@ -215,7 +243,7 @@ synthetic `blocked` result with `termination: invalid_result` and exit as
 Treat an oversized result as contract-invalid. The format-only retry may shorten
 fields and reference an artifact already written during the original work, but it must
 not run a tool, write a new artifact, repeat implementation, or delegate to another
-agent. If essential evidence exists only in the oversized response, stop as
+agent. Rewriting its own result file and returning a new pointer is the one exception. If essential evidence exists only in the oversized response, stop as
 `worker_result_invalid` rather than discard it and claim completion.
 
 If the host cannot parse and validate the whole object reliably, do not use a
@@ -248,14 +276,26 @@ stalled even when the host still reports it as running. Stop it through the host
 record a synthetic `blocked` result whose termination matches what the host reports
 for that stop (`cancelled` when it reports a cancellation, otherwise `timeout`) and
 whose blocker message starts with `stalled:`. Do not read its output folder. A stalled
-worker ends the run as `worker_blocked`, like any other blocked worker.
+worker ends the run as `worker_blocked`, like any other blocked worker, unless a
+pre-authorized successor applies.
 
 A successor may continue the same assignment only after the user authorizes the
-succession, and only in a follow-up run. Give it the original brief plus the
-predecessor's commit list and uncommitted diff summary as untrusted starting material
-that it must verify; never the predecessor's transcript or claims. In the follow-up
-run's `run.json`, list the stopped run in `preceding_runs` and record the pair in
+succession. Give it the original brief plus the predecessor's commit list and uncommitted
+diff summary as untrusted starting material that it must verify; never the predecessor's
+transcript or claims. Without advance authorization this happens in a follow-up run: in
+that run's `run.json`, list the stopped run in `preceding_runs` and record the pair in
 `worker_successions`, with the predecessor's archived path inside that preceding run.
+
+The user can authorize one successor in advance by setting `preauthorized_successor: true`
+in the configuration. It applies only to a worker whose result is `blocked` with termination
+`timeout` or `cancelled` and `needs_user_input: false`, which is a stop the host caused (a
+stall, a watchdog, or a lost session). Rerunning the same brief cannot get past a missing
+permission, a tool error, a context limit, or an invalid result, so those still end the run.
+After recording the synthetic result, start one successor in the same run with the same
+starting material, and record the pair in `worker_successions` with `scope: same_run` and
+`authorization: config preauthorized_successor`. An assignment gets at most one: if the
+successor also stops, the run exits as `worker_blocked`. List every use in the report.
+
 A reviewer or gate that stops is never continued with partial context; start a new one
 from a clean brief.
 
@@ -342,6 +382,12 @@ for repeated checks instead. Do not lower configured role models to save cost.
 
 ## 7. Iterate at most three times
 
+One iteration is one blind review of the candidate, the final gate when that review makes
+a success candidate, and the repair that follows a Failed review or a failed gate. The
+review after a repair starts the next iteration, so a gate failure in iteration N is
+repaired in N and reviewed again in N+1. Record a gate's result in its iteration's `gate`
+field in `run.json`.
+
 ### Develop
 
 If the target diff already exists, skip development. Otherwise delegate the
@@ -369,7 +415,8 @@ earlier iteration or gate. Run the bundled `veriloop` skill with only:
 - frozen review target;
 - confirmed specification;
 - scope bounds;
-- risk focus.
+- risk focus;
+- the issued result path, when results travel as files.
 
 Do not send developer or fixer reasoning, prior reports, ledger contents, accepted
 warnings, acceptance results, or gate probes. Exclude `.agent-review/`, `REVIEW.md`,
@@ -411,6 +458,12 @@ malformed findings array as a pass.
    with evidence.
 3. No progress: any finding is recurred, or the failed count did not decrease from
    the previous iteration. Stop and ask for the specific human decision needed.
+
+The failed count is the number of Failed findings in the iteration's review. Gate findings
+are not counted, because each gate generates new probes and their counts cannot be
+compared. A gate finding can still recur: it enters the ledger like any other, so a later
+Failed finding with the same invariant is recurred and stops the loop. A review with no
+Failed findings never counts as no progress, whatever the previous count was.
 
 A user-authorized follow-up run does not erase the previous lack of progress. Before
 restarting, state the repeated invariant, why the previous approach was insufficient,
@@ -560,7 +613,8 @@ Do this with the bundled script rather than by hand:
       --worker RESULT.json --gate GATE.json --review REVIEW-N.md --staging DIR --delete-staging
 
 (paths relative to this skill; repeat `--worker`, `--gate`, `--review`, and `--staging`
-as needed). It allocates the next run number, copies and digest-verifies artifacts,
+as needed, and pass the run's results directory as one more `--staging` so that it is
+removed with the rest). It allocates the next run number, copies and digest-verifies artifacts,
 rewrites archived paths relative to the run directory, validates every result and the
 run record, moves the run directory into place, and deletes staging only after all of
 that succeeded. Exit 1 means nothing was archived: keep the staging directories, fix
@@ -574,6 +628,7 @@ Write `run.json` to conform to `../../schemas/run-result.schema.json`, using the
 exit identifiers `goal_met`, `iteration_cap`, `no_progress`, and
 `blind_context_unavailable`, plus `worker_blocked`, `worker_failed`, and
 `worker_result_invalid` for worker termination exits. Include each criterion's phase,
+each iteration's `gate` result when one ran,
 `preceding_runs` for a follow-up run, and any `oracles`, `model_substitutions`, and
 `worker_successions`. Validate it before reporting success; an invalid archive cannot
 change the actual gate verdict but must be reported as an archival failure.
@@ -584,7 +639,7 @@ Report:
   blocked/failed, or invalid worker result;
 - worker termination: role, status, termination, failed/blocked check, and blocker;
 - every acceptance criterion, exact check, Pass/Fail, and captured evidence;
-- each iteration's verdict and failed/warning counts;
+- each iteration's verdict, failed/warning counts, and gate result when one ran;
 - every resolved finding as Pass;
 - every remaining warning and its required disposition: accept, file an issue, or
   clean up now;

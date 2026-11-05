@@ -23,6 +23,13 @@ with tempfile.TemporaryDirectory() as tmp:
         result = subprocess.run([sys.executable,str(ROOT/'scripts/check_worker_result.py'),str(payload),'--role','developer','--staging-root',str(staging)],capture_output=True)
         assert (result.returncode == 0) == valid, result.stderr.decode()
     check(data,True)
+    def check_digest(expected, valid):
+        payload = root / 'result.json'
+        payload.write_text(json.dumps(data))
+        result = subprocess.run([sys.executable,str(ROOT/'scripts/check_worker_result.py'),str(payload),'--role','developer','--staging-root',str(staging),'--sha256',expected],capture_output=True)
+        assert (result.returncode == 0) == valid, result.stderr.decode()
+    check_digest(hashlib.sha256(json.dumps(data).encode()).hexdigest(),True)
+    check_digest('0'*64,False)
     bad=copy.deepcopy(data);bad['checks'][0]['evidence']='x'*513;check(bad,False)
     bad=copy.deepcopy(data);bad['checks'][0]['kind']='assertion';bad['checks'][0]['exit_code']=0;check(bad,False)
     check('prefix '+json.dumps(data),False)

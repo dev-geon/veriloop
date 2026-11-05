@@ -14,9 +14,11 @@ spec.loader.exec_module(contracts)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("result", type=Path)
+    parser.add_argument("--sha256", help="the digest the reviewer's result pointer named")
     args = parser.parse_args()
     try:
         raw = args.result.read_bytes()
+        contracts.require_digest(raw, args.sha256)
         text = raw.decode("utf-8")
         if not text.lstrip().startswith("{"):
             block = contracts.review_result_text(text)

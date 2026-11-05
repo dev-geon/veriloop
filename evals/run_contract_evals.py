@@ -23,6 +23,9 @@ WORKER_RESULT_MAX_BYTES = 16_384
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*$")
 REVIEW_FENCE_INFOS = (["json"], ["json", "veriloop-review"])
+SUCCESSOR_AUTHORIZATION = "config preauthorized_successor"
+SUCCESSOR_TERMINATIONS = {"timeout", "cancelled"}
+OPTIONAL_BRIEF_KEYS = {"result_path"}
 
 REVIEW_BRIEF = {
     "strict_blind",
@@ -45,7 +48,11 @@ EVENT_KEYS = {
     "gate": {"type", "actor", "brief_keys", "probe_metadata", "result"},
     "exit": {"type", "reason"},
 }
-OPTIONAL_EVENT_KEYS = {"acceptance": {"phase"}}
+OPTIONAL_EVENT_KEYS = {
+    "acceptance": {"phase"},
+    "developer_change": {"same_run_successor"},
+    "fixer_change": {"same_run_successor"},
+}
 ACCEPTANCE_PHASES = {"loop", "post_deploy", "manual"}
 SKILL_CONTRACTS = {
     "model groups": r"canonical groups are[\s\S]+?`design_review_gate`[\s\S]+?`worker`",
@@ -95,6 +102,12 @@ SKILL_CONTRACTS = {
     "gate result validator": r"scripts/check_gate_result\.py",
     "gate shape reaches the brief": r"Copy this shape into the gate's brief",
     "harness dependencies before delegation": r"external dependencies draft-spec listed must still be reachable",
+    "iteration defined": r"One iteration is one blind review",
+    "failed count excludes gates": r"Gate findings\s+are not counted",
+    "results travel as files": r"### Receive results as files",
+    "digest confirms the result file": r"passing the pointer's digest",
+    "one pre-authorized successor": r"`preauthorized_successor: true`[\s\S]+?An assignment gets at most one",
+    "pre-authorized successor is narrow": r"`timeout` or `cancelled` and `needs_user_input: false`",
 }
 EXIT_DOCUMENT_CONTRACTS = {
     "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
@@ -105,6 +118,7 @@ REVIEW_SKILL_CONTRACTS = {
     "review report in Korean": r"Write the report in Korean whatever language the conversation uses",
     "specification violation is Failed": r"whether or not an acceptance criterion\s+names it",
     "loop review fence": r"tag the fence\s+`json veriloop-review`",
+    "reviewer writes only its result file": r"strict loop mode never write target files",
 }
 DRAFT_SPEC_CONTRACTS = {
     "design partner before drafting": r"dispatch a fresh `designer`\s+subagent resolved from the `design_review_gate` model group",
@@ -286,6 +300,36 @@ def parse_json_object(raw: bytes) -> dict[str, Any]:
     data = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs)
     require(isinstance(data, dict), "top-level JSON value is not an object")
     return data
+
+
+def require_digest(raw: bytes, expected: str | None) -> None:
+    """When a role's pointer named a digest, the file must be the one it named."""
+    if expected is not None:
+        require(hashlib.sha256(raw).hexdigest() == expected, "result digest mismatch")
+
+
+def parse_result_pointer(raw: str, issued_path: str, label: str) -> dict[str, Any]:
+    """Parse the final response of a role whose result travels as a file; prose is not recoverable."""
+    require(isinstance(raw, str) and raw.strip(), f"{label}: response is empty")
+    try:
+        pointer = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise EvalFailure(f"{label}: response is not one raw JSON pointer: {error}") from error
+    require(isinstance(pointer, dict), f"{label}: response is not a JSON object")
+    schema = load_json(SCHEMA_DIR / "result-pointer.schema.json")
+    validate_schema(pointer, schema, schema, label)
+    require(re.fullmatch(r"[0-9a-f]{64}", pointer["sha256"]) is not None, f"{label}: digest format is invalid")
+    require(pointer["result_path"] == issued_path, f"{label}: result path is not the issued path")
+    return pointer
+
+
+def stop_allows_successor(result: dict[str, Any]) -> bool:
+    """Only a stop the host caused can be retried with the same brief."""
+    return (
+        result["status"] == "blocked"
+        and result["termination"] in SUCCESSOR_TERMINATIONS
+        and not result["blocker"]["needs_user_input"]
+    )
 
 
 def safe_error(error: Exception) -> str:
@@ -655,6 +699,9 @@ def validate_case(case: dict[str, Any]) -> None:
     developer_assignments: list[tuple[int, set[str]]] = []
     worker_index = 0
     required_worker_exit: str | None = None
+    last_worker: dict[str, Any] | None = None
+    last_worker_was_successor = False
+    same_run_successor_count = 0
     latest_acceptance: dict[str, tuple[int, str]] = {}
     latest_review: str | None = None
     pending_fix_source: str | None = None
@@ -695,6 +742,17 @@ def validate_case(case: dict[str, Any]) -> None:
             require(event_type in {"fixer_change", "exit"}, f"{label}: {pending_fix_source} failure was bypassed")
         if detected_no_progress:
             require(event_type == "exit", f"{label}: work continued after no progress was detected")
+        if event.get("same_run_successor"):
+            require(
+                event_type in MUTATIONS and required_worker_exit is not None and last_worker is not None,
+                f"{label}: same-run successor without a stopped worker",
+            )
+            require(
+                stop_allows_successor(last_worker) and not last_worker_was_successor,
+                f"{label}: this stop does not allow a same-run successor",
+            )
+            required_worker_exit = None
+            same_run_successor_count += 1
         if required_worker_exit is not None:
             require(event_type == "exit", f"{label}: work continued after incomplete worker")
 
@@ -738,6 +796,8 @@ def validate_case(case: dict[str, Any]) -> None:
                 f"{case_id}.workers[{worker_index + 1}]",
             )
             worker_index += 1
+            last_worker = worker_result
+            last_worker_was_successor = bool(event.get("same_run_successor"))
             if worker_result["status"] == "completed":
                 if role == "fixer":
                     pending_fix_source = None
@@ -775,7 +835,7 @@ def validate_case(case: dict[str, Any]) -> None:
 
         elif event_type == "review":
             require(pending_fix_source is None, f"{label}: new review started before fixing failed findings")
-            require(set(event.get("brief_keys", [])) == REVIEW_BRIEF, f"{label}: reviewer brief is not allowlisted")
+            require(set(event.get("brief_keys", [])) - OPTIONAL_BRIEF_KEYS == REVIEW_BRIEF, f"{label}: reviewer brief is not allowlisted")
             claim_actor(event, label)
             validate_result("review", event["result"])
             validate_review_semantics(event["result"], label)
@@ -808,7 +868,7 @@ def validate_case(case: dict[str, Any]) -> None:
         elif event_type == "gate":
             require(snapshot is not None and not snapshot_dirty, f"{label}: gate target changed after freeze")
             require(reviewed_revision == revision, f"{label}: gate target lacks a current passing review")
-            require(set(event.get("brief_keys", [])) == GATE_BRIEF, f"{label}: gate brief is not allowlisted")
+            require(set(event.get("brief_keys", [])) - OPTIONAL_BRIEF_KEYS == GATE_BRIEF, f"{label}: gate brief is not allowlisted")
             claim_actor(event, label)
             validate_result("gate", event["result"])
             require(event["result"]["independence"] == expected_independence, f"{label}: independence label is incorrect")
@@ -888,6 +948,8 @@ def validate_case(case: dict[str, Any]) -> None:
     else:
         require(relaxation["authorized"] is False, f"{case_id}: run claims unobserved authorization")
         require(relaxation["reason"] is None and relaxation["authorization"] is None, f"{case_id}: unauthorized relaxation metadata")
+    recorded_successors = [item for item in run.get("worker_successions", []) if item.get("scope") == "same_run"]
+    require(len(recorded_successors) == same_run_successor_count, f"{case_id}: same-run successors disagree with the trace")
     validate_run_extensions(run, exit_reason, case_id)
     if exit_reason == "goal_met":
         require(gate_status == "hold", f"{case_id}: goal met without a held gate")
@@ -932,11 +994,26 @@ def validate_run_extensions(run: dict[str, Any], exit_reason: str | None, label:
                 strength["rediscovered"] == strength["historical"],
                 f"{label}: goal met with oracle {oracle['id']} missing historical failures",
             )
-    # A stopped worker ends its run fail-closed; its successor runs in a follow-up run.
-    worker_files = set(run["worker_files"])
+    # A stopped worker ends its run fail-closed; its successor runs in a follow-up run, unless the
+    # user authorized one same-run successor in advance.
+    worker_files = run["worker_files"]
     preceding = [entry.rstrip("/") + "/" for entry in run.get("preceding_runs", [])]
+    same_run_successors = {
+        item["successor"] for item in run.get("worker_successions", []) if item.get("scope") == "same_run"
+    }
     for succession in run.get("worker_successions", []):
         require(succession["successor"] in worker_files, f"{label}: worker succession references an unarchived worker")
+        if succession.get("scope") == "same_run":
+            predecessor = succession["predecessor"]
+            require(predecessor in worker_files, f"{label}: same-run predecessor is not archived in this run")
+            require(succession["authorization"] == SUCCESSOR_AUTHORIZATION, f"{label}: same-run succession lacks advance authorization")
+            require(predecessor not in same_run_successors, f"{label}: an assignment gets at most one same-run successor")
+            position = worker_files.index(predecessor)
+            require(
+                worker_files[position + 1 : position + 2] == [succession["successor"]],
+                f"{label}: same-run successor does not directly follow its predecessor",
+            )
+            continue
         require(succession["predecessor"] not in worker_files, f"{label}: worker succession inside one run bypasses fail-closed exit")
         require(
             any(succession["predecessor"].startswith(prefix) for prefix in preceding),
@@ -944,6 +1021,15 @@ def validate_run_extensions(run: dict[str, Any], exit_reason: str | None, label:
         )
     for substitution in run.get("model_substitutions", []):
         require(substitution["from"] != substitution["to"], f"{label}: model substitution changed nothing")
+    iteration_gates = []
+    for iteration in run["iterations"]:
+        slot = iteration.get("gate")
+        if slot is not None:
+            require(iteration["verdict"] != "fail", f"{label}: iteration {iteration['iteration']} reached the gate after a failing review")
+            require(slot["gate_file"] in run["gate_files"], f"{label}: iteration {iteration['iteration']} gate is not archived")
+            iteration_gates.append(slot)
+    if iteration_gates:
+        require(iteration_gates[-1]["status"] == run["gate"]["status"], f"{label}: last iteration gate disagrees with the run gate")
 
 
 def require_same_keys(example: Any, schema: dict[str, Any], root: dict[str, Any], path: str) -> None:
@@ -1533,7 +1619,109 @@ def run_extension_tests(cases: list[dict[str, Any]]) -> tuple[int, int]:
     same_run["run_result"]["worker_successions"][0]["predecessor"] = same_run["run_result"]["worker_files"][0]
     expect_rejected(same_run, "succession inside one run")
     expect_rejected(with_succession("elsewhere/workers/developer-1.json", None), "succession from a run that is not preceding")
-    return positives, 7
+    guards = 7
+
+    def with_iteration_gate(status: str | None = None, gate_file: str | None = None) -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        run["iterations"][-1]["gate"] = {
+            "status": status or run["gate"]["status"],
+            "failed_count": 0,
+            "gate_file": gate_file or run["gate_files"][-1],
+        }
+        return case
+
+    timeout_file = "evals/fixtures/archives/developer-timeout.json"
+
+    def with_same_run_successor(
+        worker_file: str = timeout_file,
+        transport: str = "timeout",
+        authorization: str = SUCCESSOR_AUTHORIZATION,
+    ) -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        position = next(index for index, event in enumerate(case["events"]) if event["type"] == "developer_change")
+        stopped = copy.deepcopy(case["events"][position])
+        stopped["actor"] = "developer-stopped"
+        stopped["transport"] = transport
+        case["events"][position]["same_run_successor"] = True
+        case["events"].insert(position, stopped)
+        successor = run["worker_files"][0]
+        run["worker_files"].insert(0, worker_file)
+        run["worker_successions"] = [
+            {
+                "predecessor": worker_file,
+                "successor": successor,
+                "reason": "stalled: no progress for 20 minutes",
+                "authorization": authorization,
+                "scope": "same_run",
+            }
+        ]
+        return case
+
+    def with_result_path() -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        for event in case["events"]:
+            if event["type"] in {"review", "gate"}:
+                event["brief_keys"].append("result_path")
+        return case
+
+    validate_case(with_iteration_gate())
+    validate_case(with_same_run_successor())
+    validate_case(with_result_path())
+    positives += 3
+
+    def rejected_cases() -> list[tuple[dict[str, Any], str]]:
+        unflagged = with_same_run_successor()
+        for event in unflagged["events"]:
+            event.pop("same_run_successor", None)
+        unrecorded = with_same_run_successor()
+        del unrecorded["run_result"]["worker_successions"]
+        flagged_without_stop = copy.deepcopy(base)
+        next(event for event in flagged_without_stop["events"] if event["type"] == "developer_change")["same_run_successor"] = True
+        second = with_same_run_successor()
+        run = second["run_result"]
+        position = next(index for index, event in enumerate(second["events"]) if event.get("same_run_successor"))
+        again = copy.deepcopy(second["events"][position])
+        again["actor"] = "developer-stopped-again"
+        again["transport"] = "timeout"
+        second["events"].insert(position, again)
+        run["worker_files"].insert(1, timeout_file)
+        return [
+            (with_iteration_gate(status="fail"), "iteration gate disagreeing with the run gate"),
+            (with_iteration_gate(gate_file="gates/unknown.json"), "iteration gate that is not archived"),
+            (with_same_run_successor("evals/fixtures/archives/developer-tool-error.json", "tool_error"), "successor after a tool error"),
+            (with_same_run_successor(authorization="user said so"), "same-run successor without advance authorization"),
+            (unflagged, "same-run successor the trace did not flag"),
+            (unrecorded, "same-run successor missing from run.json"),
+            (flagged_without_stop, "successor flag without a stopped worker"),
+            (second, "second successor for one assignment"),
+        ]
+
+    for case, label in rejected_cases():
+        expect_rejected(case, label)
+    guards += len(rejected_cases())
+    return positives, guards
+
+
+def run_result_pointer_tests() -> tuple[int, int]:
+    issued = "/tmp/veriloop-7-results/fixer-2-1.json"
+    pointer = {"result_path": issued, "bytes": 120, "sha256": "a" * 64}
+    require(parse_result_pointer(json.dumps(pointer), issued, "pointer") == pointer, "valid pointer was not accepted")
+    guards = {
+        "prose around the pointer": "done: " + json.dumps(pointer),
+        "another path": json.dumps(dict(pointer, result_path="/tmp/other.json")),
+        "an extra field": json.dumps(dict(pointer, verdict="pass")),
+        "a malformed digest": json.dumps(dict(pointer, sha256="xyz")),
+        "an empty response": "   ",
+    }
+    for label, raw in guards.items():
+        try:
+            parse_result_pointer(raw, issued, label)
+        except EvalFailure:
+            continue
+        raise EvalFailure(f"result pointer guard accepted {label}")
+    return 1, len(guards)
 
 
 def main() -> int:
@@ -1556,12 +1744,14 @@ def main() -> int:
     worker_positive_count, worker_guard_count = run_worker_contract_tests()
     fallback_positive_count, fallback_guard_count = run_worker_fallback_tests()
     extension_positive_count, extension_guard_count = run_extension_tests(cases)
+    pointer_positive_count, pointer_guard_count = run_result_pointer_tests()
     print(
         f"\n{len(cases)} contract traces passed; {transition_count} authorized reduced transition passed; "
         f"{worker_exit_count} worker-exit transitions passed; {guard_count} guard mutations rejected; "
         f"{worker_positive_count} worker results passed; {worker_guard_count} worker-result mutations rejected; "
         f"{fallback_positive_count} raw-JSON fallback paths passed; {fallback_guard_count} fallback guards rejected; "
-        f"{extension_positive_count} phase/oracle extensions passed; {extension_guard_count} extension guards rejected."
+        f"{extension_positive_count} phase/oracle extensions passed; {extension_guard_count} extension guards rejected; "
+        f"{pointer_positive_count} result pointer passed; {pointer_guard_count} pointer guards rejected."
     )
     return 0
 
