@@ -19,15 +19,10 @@ def main():
     try:
         raw = args.result.read_bytes()
         contracts.require_digest(raw, args.sha256)
-        text = raw.decode("utf-8")
-        if not text.lstrip().startswith("{"):
-            block = contracts.review_result_text(text)
-            contracts.require(block is not None, "no machine-readable JSON block")
-            raw = block.encode("utf-8")
-        data = contracts.parse_json_object(raw)
+        data = contracts.result_object(raw, contracts.REVIEW_FENCE_INFOS)
         contracts.validate_result("review", data)
         contracts.validate_review_semantics(data, "review")
-    except (ValueError, OSError, AssertionError, TypeError, KeyError) as error:
+    except (ValueError, OSError, AssertionError, TypeError, KeyError, RecursionError) as error:
         print("INVALID: " + contracts.safe_error(error), file=sys.stderr)
         return 1
     print(f"VALID: {data['verdict']}, {len(data['findings'])} findings")

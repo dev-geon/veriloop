@@ -130,14 +130,17 @@ The controller reruns validation on the exact received payload; supply repeated
 Issue every worker, reviewer, and gate its own temporary workspace path outside the
 target worktree, derived from the run number, role, iteration, and attempt (for example
 `<tmp>/veriloop-<run>-<role>-<iteration>-<attempt>`; every batch, restart, or new
-instance is a new attempt). Roles never choose their own paths. If the issued path
+instance is a new attempt). For a reviewer or gate use a random suffix in place of the
+iteration and attempt, so that a blind role cannot tell which iteration it is judging.
+Roles never choose their own paths. If the issued path
 already exists or the temporary worktree cannot be created there, a worker is blocked,
 and a reviewer or gate reports the checks or probes that needed it as `blocked`; never
 fall back to another path. Remove the path when the role exits, and reclaim it yourself
 when you stop a role.
 
 Before delegation, create a unique artifact staging directory outside the target
-worktree and grant the worker access only to its target plus that directory. Keep the
+worktree and grant the worker access only to its target, that directory, and its own
+result directory (see "Receive results as files"). Keep the
 entire UTF-8 worker result at or below 16 KiB. Keep each evidence excerpt, tool error,
 and blocker message at or below 512 characters. The schema also caps checks at 32,
 tool failures at 16, and artifacts at 8.
@@ -166,12 +169,14 @@ reviewer or gate.
 ### Receive results as files
 
 A result the controller has to retype costs its tokens twice and invites copying errors,
-so results travel as files. Before the first delegation, create one results directory for
-the run, `<tmp>/veriloop-<run>-results/`, outside the target worktree and separate from the
-temporary workspaces (which are removed when a role exits) and from artifact staging. Issue
-every developer, fixer, reviewer, and gate attempt its own `result_path` there, named for
-the role, iteration, and attempt (`fixer-2-1.json`, `reviewer-2-1.md`, `gate-2-1.json`). A
-role is told only its own path and never reads the directory.
+so results travel as files. Before each delegation, create a fresh directory with an
+unguessable name for that attempt (for example with `mktemp -d`), outside the target worktree
+and separate from temporary workspaces, which are removed when a role exits, and from artifact
+staging. Its `result_path` is a file in that directory, named for the role with a random
+suffix, never the iteration (`fixer-2b7e90.json`, `reviewer-8f3a1c.md`, `gate-5d04ae.json`):
+a blind role must not learn which iteration it is judging, and `archive_run.py` needs distinct
+file names. Keep the mapping from attempt to path in your own run record. A role is told only
+its own path.
 
 A worker or gate writes its complete JSON object to that path, without a fence. A reviewer
 writes its prose report ending in the JSON block. Each role then ends with a final response
@@ -188,7 +193,9 @@ instead of copying it into a new one, and hand that same file to `archive_run.py
 
 When the host supplies native structured output, or cannot let a role write to the issued
 path, the whole result is the role's final response instead, and the controller saves it
-once, byte for byte, as received.
+once, byte for byte, as received. The validators and `archive_run.py` read every one of these
+forms: a whole raw JSON object, or a report that ends with its `json veriloop-review` or
+`json veriloop-gate` block.
 
 ### Report progress and label every subagent
 
@@ -289,7 +296,8 @@ that run's `run.json`, list the stopped run in `preceding_runs` and record the p
 The user can authorize one successor in advance by setting `preauthorized_successor: true`
 in the configuration. It applies only to a worker whose result is `blocked` with termination
 `timeout` or `cancelled` and `needs_user_input: false`, which is a stop the host caused (a
-stall, a watchdog, or a lost session). Rerunning the same brief cannot get past a missing
+stall, a watchdog, or a lost session). A stop the user asked for is not one: record it with
+`needs_user_input: true`, and the run ends. Rerunning the same brief cannot get past a missing
 permission, a tool error, a context limit, or an invalid result, so those still end the run.
 After recording the synthetic result, start one successor in the same run with the same
 starting material, and record the pair in `worker_successions` with `scope: same_run` and
@@ -385,8 +393,9 @@ for repeated checks instead. Do not lower configured role models to save cost.
 One iteration is one blind review of the candidate, the final gate when that review makes
 a success candidate, and the repair that follows a Failed review or a failed gate. The
 review after a repair starts the next iteration, so a gate failure in iteration N is
-repaired in N and reviewed again in N+1. Record a gate's result in its iteration's `gate`
-field in `run.json`.
+repaired in N and reviewed again in N+1. Iteration three has no repair: when its review or
+gate fails, stop at the cap, because an edit made after the last review would never be
+reviewed. Record a gate's result in its iteration's `gate` field in `run.json`.
 
 ### Develop
 
@@ -416,7 +425,7 @@ earlier iteration or gate. Run the bundled `veriloop` skill with only:
 - confirmed specification;
 - scope bounds;
 - risk focus;
-- the issued result path, when results travel as files.
+- the issued temporary workspace and result paths, when the role uses them.
 
 Do not send developer or fixer reasoning, prior reports, ledger contents, accepted
 warnings, acceptance results, or gate probes. Exclude `.agent-review/`, `REVIEW.md`,
@@ -462,8 +471,10 @@ malformed findings array as a pass.
 The failed count is the number of Failed findings in the iteration's review. Gate findings
 are not counted, because each gate generates new probes and their counts cannot be
 compared. A gate finding can still recur: it enters the ledger like any other, so a later
-Failed finding with the same invariant is recurred and stops the loop. A review with no
-Failed findings never counts as no progress, whatever the previous count was.
+Failed finding with the same invariant, in a review or a gate, is recurred and stops the
+loop. A review with no Failed findings never counts as no progress, whatever the previous
+count was. Because a gate runs only after a review with no Failed findings, any Failed
+finding in the review after a gate repair counts as no progress.
 
 A user-authorized follow-up run does not erase the previous lack of progress. Before
 restarting, state the repeated invariant, why the previous approach was insufficient,
@@ -585,8 +596,8 @@ Warnings never keep the loop running by themselves.
 When failed findings remain, delegate the bundled apply-review-findings skill with
 the Failed findings, their repair plans, minimal evidence, confirmed specification,
 risk focus, and only the relevant ledger identities/dispositions. Loop mode overrides the
-standalone reporting behavior of that skill: the fixer returns worker JSON only and
-does not edit review reports or controller records. Require minimal
+standalone reporting behavior of that skill: the fixer returns only its worker result, as
+a file and pointer when one was issued, and does not edit review reports or controller records. Require minimal
 edits and verification against each finding's evidence. Then review again in a fresh
 context.
 

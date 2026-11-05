@@ -55,8 +55,8 @@ This release reduces the waste that long runs exposed. Problems that used to sur
   `scripts/archive_run.py` could not read the `json veriloop-review` fence the skills require, and the instructions misnamed the gate field as `verdict`. The evals now run on Windows (LF fixed by `.gitattributes`, fixtures run with the current interpreter).
 
 ```sh
-python3 scripts/check_review_result.py reviewer-2-1.md --sha256 <digest>
-python3 scripts/check_gate_result.py gate-2-1.json --snapshot <id> --sha256 <digest>
+python3 scripts/check_review_result.py reviewer-8f3a1c.md --sha256 <digest>
+python3 scripts/check_gate_result.py gate-5d04ae.json --snapshot <id> --sha256 <digest>
 python3 evals/test_result_cli.py
 ```
 

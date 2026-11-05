@@ -55,8 +55,8 @@ Codex와 Claude Code에서 함께 사용하는 **명세 기반 코드 리뷰·�
   `scripts/archive_run.py`가 스킬이 요구하는 `json veriloop-review` 펜스를 읽지 못하던 문제와, 지침이 게이트 필드를 `verdict`로 잘못 적던 문제를 고쳤습니다. Windows에서도 평가가 돕니다(`.gitattributes`로 LF 고정, 현재 인터프리터로 fixture 실행).
 
 ```sh
-python3 scripts/check_review_result.py reviewer-2-1.md --sha256 <digest>
-python3 scripts/check_gate_result.py gate-2-1.json --snapshot <id> --sha256 <digest>
+python3 scripts/check_review_result.py reviewer-8f3a1c.md --sha256 <digest>
+python3 scripts/check_gate_result.py gate-5d04ae.json --snapshot <id> --sha256 <digest>
 python3 evals/test_result_cli.py
 ```
 

@@ -36,8 +36,8 @@ When `run-review-loop` invokes this skill in strict blind mode, treat the review
 isolated evaluation:
 
 - Accept only the strict-blind invocation marker, repository path, frozen review
-  target, confirmed specification, scope bounds, risk focus, and the result path the
-  controller issued.
+  target, confirmed specification, scope bounds, risk focus, and the temporary workspace
+  and result paths the controller issued.
 - Do not accept or request the developer's reasoning, fixer explanation, prior review
   reports, findings ledger, acceptance-check results, or gate probes.
 - Do not read `.agent-review/`, `REVIEW.md`, `PRD.md`, `DECISIONS.md`, worker artifacts

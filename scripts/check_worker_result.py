@@ -33,7 +33,7 @@ def main():
         contracts.validate_worker_semantics(data, args.role, "worker", staging_root=args.staging_root)
         titles = {check["criterion"] for check in data["checks"]}
         contracts.require(set(args.criterion) <= titles, "required criteria missing")
-    except (ValueError, OSError, AssertionError, TypeError, KeyError) as error:
+    except (ValueError, OSError, AssertionError, TypeError, KeyError, RecursionError) as error:
         # Do not echo worker-controlled values or sensitive payloads.
         print("INVALID: " + type(error).__name__ + "; inspect schema, criteria and artifact metadata locally", file=sys.stderr)
         return 1

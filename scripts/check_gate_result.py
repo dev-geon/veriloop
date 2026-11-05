@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only validation of one final gate result, a whole raw JSON object."""
+"""Read-only validation of one final gate result: raw JSON, or a report ending in a fenced JSON block."""
 import argparse
 import importlib.util
 import sys
@@ -20,12 +20,12 @@ def main():
     try:
         raw = args.result.read_bytes()
         contracts.require_digest(raw, args.sha256)
-        data = contracts.parse_json_object(raw)
+        data = contracts.result_object(raw, contracts.GATE_FENCE_INFOS)
         contracts.validate_result("gate", data)
         contracts.validate_gate_verdict(data, "gate")
         if args.snapshot is not None:
             contracts.require(data["snapshot"] == args.snapshot, "gate used a different snapshot")
-    except (ValueError, OSError, AssertionError, TypeError, KeyError) as error:
+    except (ValueError, OSError, AssertionError, TypeError, KeyError, RecursionError) as error:
         print("INVALID: " + contracts.safe_error(error), file=sys.stderr)
         return 1
     print(f"VALID: {data['gate']}, {len(data['probes'])} probes, {len(data['findings'])} findings")

@@ -21,7 +21,10 @@ nothing else.
 
 Inside `run-review-loop`, consume only its issued repair packet and obey its role
 boundaries. Return one JSON object matching `../../schemas/worker-result.schema.json`,
-with a check for each exact Failed title; do not write REVIEW.md, ledger or run records.
+with a check for each exact Failed title: write it to the result path the controller issued
+and end with the pointer object defined by `../../schemas/result-pointer.schema.json`, or
+return it as your whole final response when no path was issued. Do not write REVIEW.md,
+ledger or run records.
 Do not inspect passed gate probes or expand a minimal gate failure packet. Verify up to
 the finding's reproduction, the repair, and the tests that directly cover what you changed;
 the controller runs the cumulative acceptance set. The table and report updates in Step 5

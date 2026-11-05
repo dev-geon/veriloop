@@ -224,8 +224,9 @@ class Archiver:
         name = source.name
         self.stage = f"validating gate {name}"
         raw = source.read_bytes()
-        data = parse_json(raw)
+        data = contracts.result_object(raw, contracts.GATE_FENCE_INFOS)
         contracts.validate_result("gate", data)
+        contracts.validate_gate_verdict(data, f"gates/{name}")
         self.gate_results[name] = data
         (self.partial / "gates").mkdir(exist_ok=True)
         with (self.partial / "gates" / name).open("xb") as handle:
@@ -243,10 +244,8 @@ class Archiver:
     def review_result(self, name):
         """The last fenced JSON block of an archived review, validated like the contract evals do."""
         self.stage = f"validating review {name}"
-        text = (self.partial / "reviews" / name).read_bytes().decode("utf-8")
-        block = contracts.review_result_text(text)
-        require(block is not None, f"reviews/{name}: no machine-readable JSON block")
-        result = parse_json(block.encode("utf-8"))
+        raw = (self.partial / "reviews" / name).read_bytes()
+        result = contracts.result_object(raw, contracts.REVIEW_FENCE_INFOS)
         contracts.validate_result("review", result)
         contracts.validate_review_semantics(result, f"reviews/{name}")
         return result
@@ -288,6 +287,10 @@ class Archiver:
             position = names.index(name)
             require(contracts.stop_allows_successor(self.worker_results[position]),
                     f"worker_successions[{index}]: the predecessor did not stop for a host-caused reason")
+            following = self.worker_results[position + 1 : position + 2]
+            if following:
+                require(following[0]["role"] == self.worker_results[position]["role"],
+                        f"worker_successions[{index}]: the successor does not continue the predecessor's assignment")
             succession["predecessor"] = worker_files[position]
             positions.add(position)
         return positions
@@ -312,6 +315,9 @@ class Archiver:
         contracts.validate_run_extensions(run, run["exit_reason"], "run.json")
         if run["exit_reason"] == "goal_met":
             require(run["gate"]["status"] == "hold", "goal_met requires a held gate")
+            last_gate = list(self.gate_results.values())[-1] if self.gate_results else None
+            require(last_gate is not None and last_gate["gate"] == "hold" and last_gate["snapshot"] == run["gate"]["snapshot"],
+                    "goal_met requires its last archived gate to hold on the same snapshot")
             for index, item in enumerate(run["acceptance"]):
                 if item.get("phase", "loop") == "loop":
                     require(item["result"] == "pass", f"acceptance[{index}]: goal_met requires every loop-phase check to pass")

@@ -38,9 +38,10 @@ distinguish a completed task from a partial response, failed tool call, timeout,
 cancellation, context limit, or invalid result. The host's delegation/tool termination
 status is authoritative and is checked before the response body.
 
-Native structured output is preferred. When it is unavailable, the worker returns one
-raw JSON object as its entire final response. The controller parses the whole response
-with a JSON parser and validates the schema; it never extracts an object from prose with
+Native structured output is preferred. When it is unavailable, the worker writes the object
+to its issued result file and returns a pointer to it, or, when the host cannot write that
+file, returns one raw JSON object as its entire final response. The controller parses the
+whole response with a JSON parser and validates the schema; it never extracts an object from prose with
 a regular expression. One format-only retry may repair serialization without rerunning
 tools or editing code. A second invalid result exits fail-closed as
 `worker_result_invalid`.
@@ -95,8 +96,9 @@ Since 0.20.0 it also accepts an iteration's `gate` result, a pre-authorized succ
 same run, and a result path in a blind brief, and rejects their misuse: an iteration gate that
 disagrees with the run or is not archived, a successor after a stop the host did not cause, one
 without the exact authorization or without the trace's successor flag, a second successor for
-one assignment, a same-run succession the trace did not perform, and a result pointer with
-surrounding prose, another path, an extra field, or a malformed digest. It also checks that the run-review-loop and
+one assignment, a same-run succession the trace did not perform, a repair after a gate finding
+recurred or after the third review, and a result pointer with surrounding prose, another path,
+an extra field, or a malformed digest. These guards also check the reason for each rejection. It also checks that the run-review-loop and
 draft-spec instructions still contain the preflight, phase, oracle, stall, succession,
 temporary-path and archive rules, the report-block and product-document rules in
 `skills/run-review-loop/references/exit-documents.md`, the PRD chapter list (which must
@@ -119,7 +121,8 @@ worker results, gate results, and review files; copies every declared artifact u
 its staging-relative path and verifies its byte count and SHA-256 before and after the
 copy; rewrites archived paths relative to the run directory; validates each worker result, gate result, review JSON
 block (against its iteration's verdict and counts), each iteration's `gate` result (against
-its archived gate), and the run record (deferred phases, oracle strength, succession
+its archived gate; a `goal_met` run also needs its last archived gate to hold on the same
+snapshot), and the run record (deferred phases, oracle strength, succession
 references, and the fail-closed exit after an incomplete worker, which a same-run successor
 may lift only when `.agent-review/config.json` sets `preauthorized_successor: true` and the
 predecessor stopped with `timeout` or `cancelled`); and only then moves the directory into place and, with `--delete-staging`,

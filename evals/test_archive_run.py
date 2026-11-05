@@ -92,17 +92,21 @@ with tempfile.TemporaryDirectory() as tmp:
     review_text = '# Iteration 1\n\nNo findings.\n\n```json\n{"verdict": "pass", "findings": []}\n```\n'
 
     def archive(run_value=None, workers=None, gate_value=None, staging_dirs=None, extra=(), worker_paths=None,
-                review_value=None):
+                review_value=None, gate_text=None, with_gate=True):
         case = root / 'case'
         shutil.rmtree(case, ignore_errors=True)
         workers = workers if workers is not None else {'dev-2.json': completed}
         paths = worker_paths or [write_json(case / 'workers' / name, value) for name, value in workers.items()]
         gate_path = write_json(case / 'gate-1.json', gate if gate_value is None else gate_value)
+        if gate_text is not None:
+            gate_path.write_text(gate_text, encoding='utf-8')
         review_path = case / 'review-1.md'
         review_path.write_text(review_text if review_value is None else review_value, encoding='utf-8')
         run_path = write_json(case / 'run.json', run if run_value is None else run_value)
         argv = [sys.executable, str(SCRIPT), '--agent-review', str(agent), '--run-json', str(run_path),
-                '--gate', str(gate_path), '--review', str(review_path)]
+                '--review', str(review_path)]
+        if with_gate:
+            argv += ['--gate', str(gate_path)]
         for path in paths:
             argv += ['--worker', str(path)]
         for path in (staging_dirs if staging_dirs is not None else [staging]):
@@ -396,7 +400,23 @@ with tempfile.TemporaryDirectory() as tmp:
                                         iterations=[], acceptance=[]),
                      workers={'dev-1.json': stalled, 'dev-2.json': stalled})
     assert result.returncode == 0, result.stderr
+    expect_rejected('fixer continuing a developer assignment', 'does not continue the predecessor',
+                    run_value=continued, workers={'dev-1.json': stalled, 'dev-2.json': dict(completed, role='fixer')})
     config.unlink()
+
+    # 9. Every saved form of a result is read, and a goal needs its last gate to hold on the same snapshot.
+    result = archive(review_value=json.dumps({'verdict': 'pass', 'findings': []}))
+    assert result.returncode == 0, ('raw review', result.stderr)
+    result = archive(gate_text='# Gate\n\n```json veriloop-gate\n' + json.dumps(gate) + '\n```\n')
+    assert result.returncode == 0, ('report ending in a gate block', result.stderr)
+    expect_rejected('review with prose after its block', 'text follows the result block', review_value=review_text + '\n후기\n')
+    expect_rejected('goal without a gate file', 'last archived gate to hold', with_gate=False)
+    bad = copy.deepcopy(gate); bad['gate'] = 'fail'; bad['probes'][0]['result'] = 'fail'
+    expect_rejected('goal with a failed last gate', 'last archived gate to hold', gate_value=bad)
+    bad = copy.deepcopy(gate); bad['probes'][0]['result'] = 'fail'
+    expect_rejected('held gate with a failed probe', 'held with a failed probe', gate_value=bad)
+    bad = copy.deepcopy(run); bad['gate']['snapshot'] = 'sha256:other'
+    expect_rejected('goal with another snapshot', 'on the same snapshot', run_value=bad)
     archived_count = len(listing())
 
 print(f'PASS archive CLI: {archived_count} archived runs and {rejected} rejection cases{symlink_note}')
