@@ -42,7 +42,8 @@ isolated evaluation:
   reports, findings ledger, acceptance-check results, or gate probes.
 - Do not read `.agent-review/`, `REVIEW.md`, `PRD.md`, `DECISIONS.md`, worker artifacts
   or outcome histories, including through broad searches or displayed diffs. Use
-  allowed paths.
+  allowed paths. Do not reach them by any route: a literal path, a glob (`*`, `?`, `[…]`,
+  `**`), brace expansion (`{a,b}`), or a recursive grep over the folder that holds them.
 - Inspect the code and specification independently. Do not infer what another reviewer
   already checked.
 
@@ -223,6 +224,10 @@ Rules for the report:
   convention drift keep their usual severity.
 - Verdict follows from the findings: any Failed → **Fail**; only Warnings →
   **Pass with warnings**; nothing → **Pass**.
+- The heading text after `#### [Failed] ` or `#### [Warning] ` is the finding's title and
+  must be identical, byte for byte, to the `title` in the `json veriloop-review` block, with
+  no backticks or other markup inside it: fixers and the ledger correlate by that exact
+  string.
 - The "통과한 검사" (passed checks) section is not filler — it tells the reader which risks were
   actually ruled out, which is half the value of a review.
 - Do not pad. Three verified findings beat ten speculative ones. An empty findings list

@@ -27,3 +27,14 @@ The specification states:
 
 The oracle's checks are loop-phase acceptance criteria. Hand-enumerated cases remain as
 fast regressions, not as the completeness argument.
+
+The archive schemas bound these texts. `draft-spec` checks the limits before confirmation
+and refuses a draft that exceeds one, because a run that completes could otherwise be
+refused at archive time with no way out:
+
+| Field | Limit | Schema |
+|---|---|---|
+| acceptance criterion text (`criterion`, identifier included) | 200 characters | `schemas/worker-result.schema.json` |
+| oracle `id` | 100 characters | `schemas/run-result.schema.json` |
+| oracle `invariant`, `reference`, `generator` | 512 characters each | `schemas/run-result.schema.json` |
+| oracle `budget` | 200 characters | `schemas/run-result.schema.json` |
