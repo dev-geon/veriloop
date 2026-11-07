@@ -287,6 +287,13 @@ converge on the wrong target.
 
 ## Step 5 — Confirm and hand back
 
+Before presenting the draft, check the lengths the archive schemas enforce (the table in
+`references/invariant-oracle.md`): an acceptance criterion's text, identifier included, is
+at most 200 characters; an oracle `id` at most 100, its `invariant`, `reference`, and
+`generator` at most 512 each, and its `budget` at most 200. Refuse a draft that exceeds
+one and shorten the text with the user instead of truncating it silently, because a run
+that completes could otherwise be refused at archive time with no way out.
+
 Present the draft and ask the user to correct and confirm it. Apply their corrections.
 Only a confirmed spec counts.
 

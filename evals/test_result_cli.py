@@ -72,6 +72,27 @@ expect(REVIEW, {'verdict': 'fail', 'findings': []}, False, 'fail without a findi
 expect(REVIEW, {'verdict': 'fail', 'findings': [dict(FINDING, repair_plan='fix it')]}, False, 'repair plan as a string', reason='repair_plan')
 expect(REVIEW, '{"verdict": "pass", "verdict": "pass", "findings": []}', False, 'duplicate key', reason='duplicate JSON key')
 
+
+def prose(findings, *headings):
+    body = '## 리뷰: 집계\n\n**판정**: Fail\n\n### 지적사항\n\n'
+    body += ''.join(f'#### [{severity}] {title}\n\na.py:1 — 근거\n\n' for severity, title in headings)
+    body += '### 통과한 검사\n\n없음\n\n```json veriloop-review\n' + json.dumps({'verdict': 'fail', 'findings': findings}) + '\n```\n'
+    return body
+
+
+named = dict(FINDING, title='fleet_total runs one query per ship')
+warned = dict(FINDING, severity='warning', title='dead helper left behind', file='b.py')
+expect(REVIEW, prose([named, warned], ('Failed', named['title']), ('Warning', warned['title'])), True, 'headings match the JSON titles', output='VALID: fail, 2 findings')
+expect(REVIEW, prose([named], ('Failed', '`fleet_total` runs one query per ship')), False, 'heading with backticks around an identifier', reason='failed finding title contains a backtick')
+expect(REVIEW, prose([named, warned], ('Failed', named['title'])), False, 'a heading missing', reason='warning finding headings disagree with the JSON titles')
+expect(REVIEW, prose([named], ('Failed', named['title']), ('Warning', 'unlisted')), False, 'a heading without a finding', reason='warning finding headings disagree')
+expect(REVIEW, prose([named], ('Failed', 'fleet_total runs one query per ship ')), True, 'trailing space after a heading', output='VALID: fail')
+expect(REVIEW, prose([named], ('Warning', named['title'])), False, 'heading with the other severity', reason='failed finding headings disagree')
+expect(REVIEW, '## 리뷰\n\n### 지적사항\n\n없음\n\n' + report(FAILED, 'json veriloop-review'), False, 'findings section without headings', reason='failed finding headings disagree')
+quoted = prose([named], ('Failed', named['title'])).replace('### 통과한 검사', '```\n#### [Failed] quoted example\n```\n\n### 통과한 검사')
+expect(REVIEW, quoted, True, 'a heading inside a fence is not a finding', output='VALID: fail')
+expect(REVIEW, {'verdict': 'fail', 'findings': [dict(FINDING, title='`fleet_total` fans out')]}, False, 'backtick in a raw JSON title', reason='failed finding title contains a backtick')
+
 expect(REVIEW, report(PASSED), True, 'the file the pointer named', '--sha256', digest(report(PASSED)))
 expect(REVIEW, report(PASSED), False, 'another file than the pointer named', '--sha256', '0' * 64, reason='result digest mismatch')
 

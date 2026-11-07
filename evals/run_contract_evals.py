@@ -114,6 +114,16 @@ SKILL_CONTRACTS = {
     "digest confirms the result file": r"passing the pointer's digest",
     "one pre-authorized successor": r"`preauthorized_successor: true`[\s\S]+?An assignment gets at most one",
     "pre-authorized successor is narrow": r"`timeout` or `cancelled` and `needs_user_input: false`",
+    "zero-failed review is not a baseline": r"baseline is the most\s+recent review with one or more Failed findings",
+    "batch cap of 32 criteria": r"A batch assigns at most 32 acceptance criteria",
+    "failed criteria rerun first": r"After a repair, rerun the criteria that failed first",
+    "same-revision reuse is bounded": r"never across runs, after the target changed, or for\s+an oracle strength case",
+    "subfolder exclusion forms": r"excluded paths include their repository-root-relative\s+forms",
+    "forbidden routes to excluded documents": r"a recursive grep over\s+the folder that holds it",
+    "leak shapes are named": r"a `==> path <==` header",
+    "second leak suspends the run": r"a second leak suspends the run",
+    "blocked gate findings stay out of the ledger": r"Only a `fail` gate's findings enter the ledger",
+    "stopped-worker report lists files": r"files the run left in the target since the last completed worker",
 }
 EXIT_DOCUMENT_CONTRACTS = {
     "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
@@ -125,6 +135,11 @@ REVIEW_SKILL_CONTRACTS = {
     "specification violation is Failed": r"whether or not an acceptance criterion\s+names it",
     "loop review fence": r"tag the fence\s+`json veriloop-review`",
     "reviewer writes only its result file": r"strict loop mode never write target files",
+    "no route to excluded documents": r"Do not reach them by any route",
+    "finding titles identical byte for byte": r"identical, byte for byte, to the `title`",
+}
+APPLY_SKILL_CONTRACTS = {
+    "fixer criteria are review titles verbatim": r"`criterion` strings are the `title` values\s+from the review's JSON block, copied verbatim",
 }
 DRAFT_SPEC_CONTRACTS = {
     "design partner before drafting": r"dispatch a fresh `designer`\s+subagent resolved from the `design_review_gate` model group",
@@ -146,10 +161,12 @@ DRAFT_SPEC_CONTRACTS = {
     "missing harness dependencies": r"A check whose harness does not exist yet proves nothing",
     "post-deploy readiness note": r"Give every `post_deploy` criterion a readiness note",
     "statements trace to criteria": r"Does every mandatory statement in Scope, Target behavior, and Constraints",
+    "schema text limits before confirmation": r"refused at archive time with no way out",
 }
 ORACLE_REFERENCE_CONTRACTS = {
     "oracle strength": r"The oracle is not\s+accepted until\s+it rediscovers all of them",
     "oracle reference correct by construction": r"reference that is\s+correct by construction",
+    "text limit table": r"\| oracle `budget` \| 200 characters \|",
 }
 
 
@@ -877,7 +894,8 @@ def validate_case(case: dict[str, Any]) -> None:
                 detected_no_progress = detected_no_progress or bool(failed_keys & (passed_failed_findings | seen_gate_findings))
             passed_failed_findings.update(active_failed_findings - failed_keys)
             active_failed_findings = failed_keys
-            previous_failed_count = len(failed_findings)
+            if failed_findings:  # a review with no Failed findings is not a baseline
+                previous_failed_count = len(failed_findings)
             gate_repair_pending = False
             reviews.append(event)
             latest_review = event["result"]["verdict"]
@@ -1107,6 +1125,9 @@ def validate_skill_contracts() -> None:
     review = (ROOT / "skills" / "veriloop" / "SKILL.md").read_text(encoding="utf-8")
     for label, pattern in REVIEW_SKILL_CONTRACTS.items():
         require(re.search(pattern, review) is not None, f"veriloop skill lost contract: {label}")
+    apply = (ROOT / "skills" / "apply-review-findings" / "SKILL.md").read_text(encoding="utf-8")
+    for label, pattern in APPLY_SKILL_CONTRACTS.items():
+        require(re.search(pattern, apply) is not None, f"apply-review-findings skill lost contract: {label}")
     # The ten PRD chapter headings live in the validator; the skill and the reference must list the same ones in order.
     module = ast.parse((ROOT / "scripts" / "check_prd.py").read_text(encoding="utf-8"))
     chapters = next(ast.literal_eval(node.value) for node in module.body
@@ -1757,42 +1778,99 @@ def run_extension_tests(cases: list[dict[str, Any]]) -> tuple[int, int]:
         run["iterations"][1].update(verdict="fail", failed_count=1, warning_count=0, review_file=review_file)
         return case
 
+    plan = {
+        "invariant": "ISO dates are preserved",
+        "root_cause": "fixture",
+        "affected_paths": ["a.py"],
+        "implementation_steps": ["fixture"],
+        "verification_cases": ["fixture"],
+        "non_goals": [],
+    }
+    brief = next(event for event in base["events"] if event["type"] == "review")["brief_keys"]
+
+    def failed_review(actor: str, files: list[str]) -> dict[str, Any]:
+        findings = [
+            {"severity": "failed", "title": repair_title, "file": file, "line": 1, "confidence": "confirmed",
+             "fix_hint": "fixture", "repair_plan": plan}
+            for file in files
+        ]
+        return {"type": "review", "actor": actor, "brief_keys": list(brief), "result": {"verdict": "fail", "findings": findings}}
+
     def with_repair_after_third_review() -> dict[str, Any]:
         case = copy.deepcopy(base)
         developer = next(event for event in case["events"] if event["type"] == "developer_change")
-        brief = next(event for event in case["events"] if event["type"] == "review")["brief_keys"]
-        plan = {
-            "invariant": "ISO dates are preserved",
-            "root_cause": "fixture",
-            "affected_paths": ["a.py"],
-            "implementation_steps": ["fixture"],
-            "verification_cases": ["fixture"],
-            "non_goals": [],
-        }
-
-        def review(actor: str, files: list[str]) -> dict[str, Any]:
-            findings = [
-                {"severity": "failed", "title": repair_title, "file": file, "line": 1, "confidence": "confirmed",
-                 "fix_hint": "fixture", "repair_plan": plan}
-                for file in files
-            ]
-            return {"type": "review", "actor": actor, "brief_keys": brief, "result": {"verdict": "fail", "findings": findings}}
-
         case["events"] = [
             case["events"][0], developer,
-            review("reviewer-1", ["a.py", "b.py", "c.py"]), fixer_event("fixer-1"),
-            review("reviewer-2", ["a.py", "b.py"]), fixer_event("fixer-2"),
-            review("reviewer-3", ["a.py"]), fixer_event("fixer-3"),
+            failed_review("reviewer-1", ["a.py", "b.py", "c.py"]), fixer_event("fixer-1"),
+            failed_review("reviewer-2", ["a.py", "b.py"]), fixer_event("fixer-2"),
+            failed_review("reviewer-3", ["a.py"]), fixer_event("fixer-3"),
             {"type": "exit", "reason": "iteration_cap"},
         ]
         case["run_result"]["worker_files"] = [*case["run_result"]["worker_files"], fixer_file, fixer_file, fixer_file]
+        return case
+
+    two_failed_file = "evals/fixtures/archives/count-review-two-failed.md"
+    one_failed_file = "evals/fixtures/archives/count-review-one-failed.md"
+    no_gate = {"status": "not_run", "snapshot": None, "independence": None}
+
+    def failed_iteration(number: int, count: int, review_file: str) -> dict[str, Any]:
+        return {"iteration": number, "verdict": "fail", "independence": "strict", "failed_count": count,
+                "warning_count": 0, "review_file": review_file}
+
+    def with_shrinking_failed_count() -> dict[str, Any]:
+        """Failed 2, repair, Failed 1, repair, pass: each count is compared with the last review that had Failed findings."""
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        events = case["events"]
+        developer = next(event for event in events if event["type"] == "developer_change")
+        acceptance = next(event for event in events if event["type"] == "acceptance")
+        case["events"] = [
+            events[0], developer, acceptance,
+            failed_review("reviewer-1", ["a.py", "b.py"]), fixer_event("fixer-1"),
+            failed_review("reviewer-2", ["a.py"]), fixer_event("fixer-2"),
+            copy.deepcopy(acceptance), *events[events.index(acceptance) + 1:],
+        ]
+        run["worker_files"] = [*run["worker_files"], fixer_file, fixer_file]
+        run["iterations"] = [failed_iteration(1, 2, two_failed_file), failed_iteration(2, 1, one_failed_file),
+                             dict(run["iterations"][0], iteration=3)]
+        run["acceptance"] = run["acceptance"] * 2
+        return case
+
+    def with_flat_failed_count() -> dict[str, Any]:
+        """Both Failed findings survive the repair: the count equals the baseline and the loop stops."""
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        events = case["events"]
+        developer = next(event for event in events if event["type"] == "developer_change")
+        acceptance = next(event for event in events if event["type"] == "acceptance")
+        case["events"] = [
+            events[0], developer, acceptance,
+            failed_review("reviewer-1", ["a.py", "b.py"]), fixer_event("fixer-1"),
+            failed_review("reviewer-2", ["a.py", "b.py"]), {"type": "exit", "reason": "no_progress"},
+        ]
+        run.update(exit_reason="no_progress", worker_files=[*run["worker_files"], fixer_file], gate_files=[], gate=no_gate)
+        run["iterations"] = [failed_iteration(1, 2, two_failed_file), failed_iteration(2, 2, two_failed_file)]
+        return case
+
+    def with_repair_after_flat_count() -> dict[str, Any]:
+        """Failed 2, 1, 1: the third review matches the Failed-1 baseline, so a further repair is no progress."""
+        case = with_shrinking_failed_count()
+        run = case["run_result"]
+        last_fixer = max(index for index, event in enumerate(case["events"]) if event["type"] == "fixer_change")
+        case["events"] = [*case["events"][: last_fixer + 1], failed_review("reviewer-3", ["a.py"]), fixer_event("fixer-3"),
+                          {"type": "exit", "reason": "iteration_cap"}]
+        run.update(exit_reason="iteration_cap", worker_files=[*run["worker_files"], fixer_file], gate_files=[], gate=no_gate)
+        run["iterations"][2] = failed_iteration(3, 1, one_failed_file)
+        run["acceptance"] = run["acceptance"][:1]
         return case
 
     validate_case(with_iteration_gate())
     validate_case(with_same_run_successor())
     validate_case(with_issued_paths())
     validate_case(with_recurring_gate())
-    positives += 4
+    validate_case(with_shrinking_failed_count())
+    validate_case(with_flat_failed_count())
+    positives += 6
 
     def rejected_cases() -> list[tuple[dict[str, Any], str, str]]:
         unflagged = with_same_run_successor()
@@ -1827,6 +1905,7 @@ def run_extension_tests(cases: list[dict[str, Any]]) -> tuple[int, int]:
             (second, "second successor for one assignment", "does not allow a same-run successor"),
             (continued_after_recurrence, "repair after a gate finding recurred", "work continued after no progress"),
             (with_repair_after_third_review(), "repair after the third review", "would never be reviewed"),
+            (with_repair_after_flat_count(), "repair after the failed count stopped shrinking", "work continued after no progress"),
             (with_new_failure_after_gate_repair(), "no-progress exit on a new failure after a gate repair", "no-progress exit lacks"),
         ]
 

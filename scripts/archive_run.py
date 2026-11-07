@@ -158,19 +158,24 @@ class Archiver:
     def pick_staging(self, artifacts):
         if not artifacts:
             return None
-        choices = {}
+        present, matching = {}, {}
         for root in self.staging:
             resolved = []
             for artifact in artifacts:
                 path = (root / artifact["path"]).resolve()
                 if root not in path.parents or not path.is_file():
                     break
-                resolved.append(path)
+                resolved.append((path, digest_matches(path.read_bytes(), artifact)))
             else:
-                choices.setdefault(tuple(resolved), root)
-        require(choices, "no --staging directory contains every declared artifact")
-        require(len(choices) == 1, "declared artifacts resolve ambiguously across --staging directories")
-        return next(iter(choices.values()))
+                # Same file names in two roots are told apart by the declared byte count and digest.
+                key = tuple(path for path, _ in resolved)
+                present.setdefault(key, root)
+                if all(matched for _, matched in resolved):
+                    matching.setdefault(key, root)
+        require(present, "no --staging directory contains every declared artifact")
+        require(len(matching) <= 1, "declared artifacts resolve ambiguously across --staging directories")
+        # Without a digest match, the worker validation names the size or digest mismatch.
+        return next(iter(matching.values())) if matching else next(iter(present.values()))
 
     def archive_worker(self, source):
         name = source.name

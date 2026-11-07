@@ -29,6 +29,37 @@ The loop repeats for up to three iterations until no failed finding remains and 
   <a href="https://github.com/dev-geon/veriloop/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dev-geon/veriloop?style=flat" alt="MIT license" /></a>
 </p>
 
+## Changes in 0.21.0
+
+This release brings back into the plugin the rules that were confirmed while building the desktop app's loop engine from the plugin's rules, so terminal and Codex users run the same loop.
+
+- **The failed-count baseline is the last review that had Failed findings.**<br>
+  A review with zero Failed findings takes no part in the comparison on either side. Without such a review there is no comparison; the exemption for the review right after a gate repair and the recurrence rule stay. The evaluator no longer moves the baseline on a passing review, and derived cases accept 2→1→0 and stop at 2→1→1.
+- **A batch assigns at most 32 criteria.**<br>
+  The worker-result schema caps `checks` at 32, so more loop-phase criteria are split in contract (table) order into batches of at most 32. A repair packet that would exceed 32 checks is not delegated: a synthetic `blocked` result ends the run as `worker_blocked`.
+- **Text limits are checked before confirmation.**<br>
+  An acceptance criterion is at most 200 characters, an oracle `id` 100, `invariant`/`reference`/`generator` 512, `budget` 200. draft-spec refuses and shortens with the user instead of truncating silently, so a run that completes cannot be refused at archive time with no way out. The table is in `skills/draft-spec/references/invariant-oracle.md`.
+- **After a repair, the failed criteria run first.**<br>
+  Only when they pass does the remaining required set run. A result that already passed on the same revision in the same run may be reused rather than rerun (not across runs, not after the target changed, never for oracle strength cases), and the archive records the reused evidence.
+- **Forbidden paths for a subfolder project.**<br>
+  When the target is a subfolder of its git repository, the repository-root-relative forms are excluded too (git prints diff headers and `HEAD:` paths that way), and displayed diffs use explicit pathspecs with `:(exclude)` instead of a whole-tree diff.
+- **The scope of isolation and the shapes of a leak are stated.**<br>
+  A reviewer or gate reaches an excluded document by no route: literal path, glob, brace expansion, or a recursive grep over its folder. The controller treats three output shapes as a leak (a line starting with an excluded path and `:`, a `diff --git`/`+++`/`---` header naming one, a `==> path <==` header) and discards that review; a second leak suspends the run. A bare listing (`git status`, `ls`) is not a leak, and paths built in variables, command substitution, or scripts are stated once as out of scope.
+- **Finding titles are identical byte for byte.**<br>
+  The `#### [Failed] <title>` and `#### [Warning] <title>` headings equal the `title` in the JSON block, with no backticks, and a fixer's `criterion` copies that `title` verbatim. `scripts/check_review_result.py` rejects a heading set that differs from the JSON titles or a title with a backtick.
+- **`archive_run.py` tells same-named artifacts apart by digest.**<br>
+  When several staging roots hold the same file names, only the roots whose files match the declared `bytes` and `sha256` remain candidates; the archive is refused as ambiguous only when more than one still matches.
+- **A blocked gate's findings are not ledger entries.**<br>
+  They were never adjudicated, so they are not recorded as open, need no repair, and a new gate follows. Only `fail` gate findings enter the ledger, so a `goal_met` report is not refused for a finding that was never judged.
+- **A stopped-worker report lists the files left behind.**<br>
+  The files the run left in the target since the last completed worker, accumulated across a stopped worker, its successor, and a result synthesized to blocked by a HEAD change.
+
+```sh
+python3 scripts/check_review_result.py reviewer-8f3a1c.md --sha256 <digest>
+python3 evals/test_result_cli.py
+python3 evals/test_archive_run.py
+```
+
 ## Changes in 0.20.0
 
 This release reduces the waste that long runs exposed. Problems that used to surface in the middle of implementation now surface before a spec is confirmed, and results and repairs no longer do the same work twice.

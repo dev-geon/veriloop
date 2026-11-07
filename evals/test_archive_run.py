@@ -417,6 +417,36 @@ with tempfile.TemporaryDirectory() as tmp:
     expect_rejected('held gate with a failed probe', 'held with a failed probe', gate_value=bad)
     bad = copy.deepcopy(run); bad['gate']['snapshot'] = 'sha256:other'
     expect_rejected('goal with another snapshot', 'on the same snapshot', run_value=bad)
+
+    # 10. Same-named artifacts in two staging roots are told apart by their declared digests.
+    base_worker = json.loads((ROOT / 'evals/fixtures/archives/developer-clean.json').read_text(encoding='utf-8'))
+    logs = {'a': b'npm test: 12 passed\n', 'b': b'npm test: 12 passed, 1 skipped\n'}
+    twin_roots = {}
+    for name, payload in logs.items():
+        folder = root / f'staging-{name}'
+        folder.mkdir()
+        (folder / 'npm-test.log').write_bytes(payload)
+        twin_roots[name] = folder
+
+    def logging_worker(payload):
+        value = copy.deepcopy(base_worker)
+        value['checks'][0]['artifact_path'] = 'npm-test.log'
+        value['artifacts'] = [{'path': 'npm-test.log', 'bytes': len(payload), 'sha256': sha(payload)}]
+        return value
+
+    result = archive(workers={'dev-2.json': logging_worker(logs['a']), 'dev-3.json': logging_worker(logs['b'])},
+                     staging_dirs=list(twin_roots.values()))
+    assert result.returncode == 0, result.stderr
+    twin_dir = runs / sorted(listing())[-1]
+    for name, payload in (('dev-2', logs['a']), ('dev-3', logs['b'])):
+        archived = json.loads((twin_dir / f'workers/{name}.json').read_text(encoding='utf-8'))
+        assert archived['artifacts'][0]['path'] == f'artifacts/{name}/npm-test.log', archived['artifacts']
+        assert (twin_dir / f'artifacts/{name}/npm-test.log').read_bytes() == payload
+    (twin_roots['b'] / 'npm-test.log').write_bytes(logs['a'])
+    expect_rejected('identical artifacts in two staging roots', 'resolve ambiguously',
+                    workers={'dev-2.json': logging_worker(logs['a'])}, staging_dirs=list(twin_roots.values()))
+    expect_rejected('declared digest that no root holds', ('artifact size mismatch', 'artifact digest is incorrect'),
+                    workers={'dev-2.json': logging_worker(b'neither root holds this\n')}, staging_dirs=list(twin_roots.values()))
     archived_count = len(listing())
 
 print(f'PASS archive CLI: {archived_count} archived runs and {rejected} rejection cases{symlink_note}')

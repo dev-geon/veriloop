@@ -346,6 +346,12 @@ the controller assigns when it groups findings by cause. Two Failed findings wit
 same invariant in different iterations or runs are a recurrence even when their titles,
 files, and symptoms differ.
 
+Only a `fail` gate's findings enter the ledger. A `blocked` gate adjudicated nothing: its
+findings are not recorded as open findings, need no repair, and do not stand in the way of
+`goal_met`; a new gate follows. The controller may still keep a blocked gate's titles in
+its own record so that the same finding from a later review or gate is recognized as a
+recurrence.
+
 The controller owns the ledger. Never send it to a reviewer or gate. Reconcile
 accepted warnings after receiving a blind report instead of preloading them into the
 reviewer's context.
@@ -357,6 +363,13 @@ into independently checkable acceptance groups or components, order the smallest
 coherent batches before development. Give a fresh worker only the current batch, the
 necessary spec slice, global scope bounds, and that batch's checks. Complete its checks
 before starting the next batch.
+
+A batch assigns at most 32 acceptance criteria, because the worker-result schema caps
+`checks` at 32 (the caps are listed in section 3). When a specification has more
+loop-phase criteria than fit, split them in contract (table) order into batches of at
+most 32. A repair packet that would exceed 32 checks is not delegated: record a synthetic
+`blocked` worker result (`termination: completed`, `blocker.code: other`) and exit
+`worker_blocked`.
 
 Do not run a blind review after every development batch; that multiplies reviewer cost
 and exposes partial integration states. After all batches pass their local checks,
@@ -378,6 +391,10 @@ A fixer reproduces each Failed finding, confirms the repair, and runs the tests 
 directly cover what it changed, plus any oracle its packet names. It does not run the
 cumulative acceptance set or long end-to-end flows, and its brief must not ask for them:
 the controller runs those once on the repaired candidate.
+After a repair, rerun the criteria that failed first; only when they pass, run the
+remaining required set. A result that already passed on the same revision in the same
+run may be reused rather than rerun, never across runs, after the target changed, or for
+an oracle strength case, and the archive records the reused evidence.
 After a pass, repeat checks only for a new relevant change, failure or unresolved risk;
 record why. Do not reuse results from an older target as final-candidate evidence.
 Record a command's evidence once and map all covered criteria to it without dropping
@@ -431,7 +448,21 @@ Do not send developer or fixer reasoning, prior reports, ledger contents, accept
 warnings, acceptance results, or gate probes. Exclude `.agent-review/`, `REVIEW.md`,
 `PRD.md`, `DECISIONS.md`, worker artifacts and other outcome/history documents from
 reviewer and gate reads, searches and displayed diffs. Use explicit allowed paths; a broad search followed
-by filtering already-displayed history is not isolation. If forbidden context leaks into the brief, discard that review and
+by filtering already-displayed history is not isolation. When the target project is a
+subfolder of its git repository, the excluded paths include their repository-root-relative
+forms, because git prints diff headers and `HEAD:` paths that way, and a displayed diff names
+explicit pathspecs with `:(exclude)` for those documents instead of diffing the whole tree.
+
+State the scope of the isolation in the brief so reviews converge instead of chasing shell
+syntax. The reviewer or gate must not reach an excluded document by any route: a literal
+path, a glob (`*`, `?`, `[…]`, `**`), brace expansion (`{a,b}`), or a recursive grep over
+the folder that holds it. The controller treats tool output in three shapes as a context
+leak: a line that begins with an excluded path followed by `:` (grep output), a
+`diff --git`, `+++`, or `---` header naming an excluded path, and a `==> path <==` header
+(head or tail). A bare listing of names (`git status`, `ls`) is not a leak. Paths built
+inside variables, command substitution, or scripts are outside this scope; the skill states
+that limit once rather than pretending to cover it. On a leak, discard that review and
+start a clean reviewer; a second leak suspends the run. If forbidden context leaks into the brief, discard that review and
 start a clean reviewer; if that cannot be done, return to the strict-mode preflight.
 
 Require the prose report and final machine-readable JSON block. For every finding, the
@@ -473,9 +504,11 @@ are not counted, because each gate generates new probes and their counts cannot 
 compared. A gate finding can still recur: it enters the ledger like any other, so a later
 Failed finding with the same invariant, in a review or a gate, is recurred and stops the
 loop. A review with no Failed findings never counts as no progress, whatever the previous
-count was. The review right after a gate repair is not compared by count either: a gate runs
-only after a review with no Failed findings, so that review has no count to improve on.
-Recurrence and the three-iteration cap still stop the loop.
+count was, and it takes no part in the comparison on either side: the baseline is the most
+recent review with one or more Failed findings, and when no such review exists there is no
+comparison. The review right after a gate repair is not compared by count either: a gate runs
+only after a review with no Failed findings, so an earlier baseline says nothing about the
+gate's finding. Recurrence and the three-iteration cap still stop the loop.
 
 A user-authorized follow-up run does not erase the previous lack of progress. Before
 restarting, state the repeated invariant, why the previous approach was insufficient,
@@ -649,7 +682,9 @@ Report:
 
 - exit reason: goal met, iteration cap, no progress, blind context unavailable, worker
   blocked/failed, or invalid worker result;
-- worker termination: role, status, termination, failed/blocked check, and blocker;
+- worker termination: role, status, termination, failed/blocked check, and blocker, and
+  the files the run left in the target since the last completed worker (accumulated across
+  a stopped worker, its successor, and a result synthesized to blocked by a HEAD change);
 - every acceptance criterion, exact check, Pass/Fail, and captured evidence;
 - each iteration's verdict, failed/warning counts, and gate result when one ran;
 - every resolved finding as Pass;

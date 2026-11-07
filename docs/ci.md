@@ -110,8 +110,18 @@ guess-hunt contradiction and statement-tracing checks), and the preflight rules 
 missing harness and for `post_deploy` readiness. It also checks that the gate result example in the
 run-review-loop instructions uses exactly the fields of `schemas/gate-result.schema.json`.
 
+Since 0.21.0 it also accepts a run whose failed count shrinks from two to one before the
+passing review, and a `no_progress` stop when a later review has as many Failed findings as
+the last review that had any; it rejects a repair after that stop. It also checks the
+0.21.0 instructions: the batch cap, the re-check order after a repair, the subfolder and
+route rules of blind isolation and the leak shapes, the blocked-gate ledger rule, the
+stopped-worker file list, the byte-for-byte finding titles (also in the fixer's criteria),
+and the text limits draft-spec checks before confirmation.
+
 The trace model detects no progress by finding identity (file and title) and failed
-counts, leaving the review right after a gate repair out of the count comparison. Recurrence of the same invariant under a different title is a controller
+counts, leaving the review right after a gate repair out of the count comparison. A review
+with no Failed findings is not a baseline: the count is compared with the most recent review
+that had one. Recurrence of the same invariant under a different title is a controller
 judgment recorded in the ledger; the trace evaluator does not model it.
 
 ## Run archiving and REVIEW.md validation
@@ -119,7 +129,8 @@ judgment recorded in the ledger; the trace evaluator does not model it.
 `scripts/archive_run.py` writes one `.agent-review/runs/NNN/` directory. It copies
 worker results, gate results, and review files; copies every declared artifact under
 its staging-relative path and verifies its byte count and SHA-256 before and after the
-copy; rewrites archived paths relative to the run directory; validates each worker result, gate result, review JSON
+copy (when several staging roots hold the same file names, the declared byte count and
+digest pick the root); rewrites archived paths relative to the run directory; validates each worker result, gate result, review JSON
 block (against its iteration's verdict and counts), each iteration's `gate` result (against
 its archived gate; a `goal_met` run also needs its last archived gate to hold on the same
 snapshot), and the run record (deferred phases, oracle strength, succession
@@ -131,7 +142,9 @@ untouched. Exit 3 means the archive is complete but staging cleanup failed; fini
 cleanup instead of archiving again.
 
 `scripts/check_review_result.py` validates one reviewer result (raw JSON, or a report
-ending in a ` ```json ` or ` ```json veriloop-review ` block), and
+ending in a ` ```json ` or ` ```json veriloop-review ` block; when the report lists its
+findings, the `#### [Failed]` and `#### [Warning]` headings must name exactly the JSON
+titles, byte for byte, and no title may contain a backtick), and
 `scripts/check_gate_result.py` validates one gate result: its schema, that the verdict
 follows from its probes and findings, and with `--snapshot` that it judged the frozen
 target. Both are read-only and never echo values from the document. Both, and
