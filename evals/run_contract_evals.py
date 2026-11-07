@@ -11,6 +11,7 @@ import json
 import re
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_DIR = ROOT / "schemas"
 DEFAULT_CASES = Path(__file__).with_name("contract-cases.json")
 WORKER_RESULT_MAX_BYTES = 16_384
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*$")
+REVIEW_FENCE_INFOS = (["json"], ["json", "veriloop-review"])
+GATE_FENCE_INFOS = (["json"], ["json", "veriloop-gate"])
+LINE_BREAK = re.compile(r"\r\n|\n|\r")
+SUCCESSOR_AUTHORIZATION = "config preauthorized_successor"
+SUCCESSOR_TERMINATIONS = {"timeout", "cancelled"}
+OPTIONAL_BRIEF_KEYS = {"result_path", "temp_path"}
 
 REVIEW_BRIEF = {
     "strict_blind",
@@ -41,7 +50,11 @@ EVENT_KEYS = {
     "gate": {"type", "actor", "brief_keys", "probe_metadata", "result"},
     "exit": {"type", "reason"},
 }
-OPTIONAL_EVENT_KEYS = {"acceptance": {"phase"}}
+OPTIONAL_EVENT_KEYS = {
+    "acceptance": {"phase"},
+    "developer_change": {"same_run_successor"},
+    "fixer_change": {"same_run_successor"},
+}
 ACCEPTANCE_PHASES = {"loop", "post_deploy", "manual"}
 SKILL_CONTRACTS = {
     "model groups": r"canonical groups are[\s\S]+?`design_review_gate`[\s\S]+?`worker`",
@@ -83,6 +96,24 @@ SKILL_CONTRACTS = {
     "report validation": r"scripts/check_review_report\.py REVIEW\.md",
     "product document validation": r"scripts/check_prd\.py PRD\.md --spec IA\.md",
     "exit documents in Korean": r"both written in Korean\s+whatever language the conversation uses",
+    "interpreter fallback": r"where that does not start Python",
+    "host limits in the worker brief": r"State the host's execution limits in every worker brief",
+    "run evidence outside the target": r"run evidence never go inside the target worktree",
+    "fixer verification is bounded": r"It does not run the\s+cumulative acceptance set",
+    "review result validator": r"scripts/check_review_result\.py",
+    "gate result validator": r"scripts/check_gate_result\.py",
+    "gate shape reaches the brief": r"Copy this shape into the gate's brief",
+    "harness dependencies before delegation": r"external dependencies draft-spec listed must still be reachable",
+    "iteration defined": r"One iteration is one blind review",
+    "failed count excludes gates": r"Gate findings\s+are not counted",
+    "results travel as files": r"### Receive results as files",
+    "result names hide the iteration": r"never the iteration",
+    "user stop has no successor": r"A stop the user asked for",
+    "no repair at the cap": r"Iteration three has no repair",
+    "count comparison skips a gate repair": r"review right after a gate repair is not compared by count",
+    "digest confirms the result file": r"passing the pointer's digest",
+    "one pre-authorized successor": r"`preauthorized_successor: true`[\s\S]+?An assignment gets at most one",
+    "pre-authorized successor is narrow": r"`timeout` or `cancelled` and `needs_user_input: false`",
 }
 EXIT_DOCUMENT_CONTRACTS = {
     "single report block": r"exactly one fenced block whose info string is `json veriloop-report`",
@@ -91,6 +122,9 @@ EXIT_DOCUMENT_CONTRACTS = {
 }
 REVIEW_SKILL_CONTRACTS = {
     "review report in Korean": r"Write the report in Korean whatever language the conversation uses",
+    "specification violation is Failed": r"whether or not an acceptance criterion\s+names it",
+    "loop review fence": r"tag the fence\s+`json veriloop-review`",
+    "reviewer writes only its result file": r"strict loop mode never write target files",
 }
 DRAFT_SPEC_CONTRACTS = {
     "design partner before drafting": r"dispatch a fresh `designer`\s+subagent resolved from the `design_review_gate` model group",
@@ -108,6 +142,10 @@ DRAFT_SPEC_CONTRACTS = {
     "one outcome per criterion": r"State one\s+observable outcome per criterion",
     "guess hunt checks contradictions": r"Do the committed sections contradict each other",
     "spec documents in Korean": r"Write `IA\.md` and `DECISIONS\.md` in Korean whatever language the conversation uses",
+    "evidence outside the repository": r"evidence outside the repository",
+    "missing harness dependencies": r"A check whose harness does not exist yet proves nothing",
+    "post-deploy readiness note": r"Give every `post_deploy` criterion a readiness note",
+    "statements trace to criteria": r"Does every mandatory statement in Scope, Target behavior, and Constraints",
 }
 ORACLE_REFERENCE_CONTRACTS = {
     "oracle strength": r"The oracle is not\s+accepted until\s+it rediscovers all of them",
@@ -226,12 +264,115 @@ def validate_result(name: str, result: dict[str, Any]) -> None:
     validate_schema(result, schema, schema)
 
 
+def fenced_blocks(text: str) -> list[tuple[list[str], str, int]]:
+    """Return (info words, body, closing line number) for every fenced block, honouring nesting."""
+    blocks: list[tuple[list[str], str, int]] = []
+    body: list[str] = []
+    fence: tuple[str, list[str]] | None = None
+    # Only real line breaks count: a JSON string may hold U+2028, which str.splitlines would split.
+    for number, line in enumerate(LINE_BREAK.split(text)):
+        if fence is None:
+            match = FENCE_OPEN.match(line)
+            if match:
+                marker, info = match.groups()
+                if marker[0] == "`" and "`" in info:
+                    continue  # CommonMark forbids backticks in a backtick fence's info string.
+                fence, body = (marker, info.split()), []
+            continue
+        match = FENCE_CLOSE.match(line)
+        if match and match.group(1)[0] == fence[0][0] and len(match.group(1)) >= len(fence[0]):
+            blocks.append((fence[1], "\n".join(body), number))
+            fence = None
+        else:
+            body.append(line)
+    require(fence is None, "a fenced block is not closed")
+    return blocks
+
+
+def final_result_text(text: str, infos: tuple[list[str], ...]) -> str | None:
+    """The body of the JSON block a report ends with; nothing may follow it."""
+    matching = [block for block in fenced_blocks(text) if block[0] in infos]
+    if not matching:
+        return None
+    _, body, closed_at = matching[-1]
+    require(not any(line.strip() for line in LINE_BREAK.split(text)[closed_at + 1 :]), "text follows the result block")
+    return body
+
+
+def result_object(raw: bytes, infos: tuple[list[str], ...]) -> dict[str, Any]:
+    """One saved role result: a whole raw JSON object, or a report that ends in a JSON block."""
+    text = raw.decode("utf-8")
+    if not text.lstrip().startswith("{"):
+        block = final_result_text(text, infos)
+        require(block is not None, "no machine-readable JSON block")
+        raw = block.encode("utf-8")
+    return parse_json_object(raw)
+
+
+def parse_json_object(raw: bytes) -> dict[str, Any]:
+    """Parse one whole JSON object from UTF-8 bytes, rejecting duplicate keys."""
+
+    def pairs(items: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in items:
+            require(key not in result, "duplicate JSON key")
+            result[key] = value
+        return result
+
+    data = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs)
+    require(isinstance(data, dict), "top-level JSON value is not an object")
+    return data
+
+
+def require_digest(raw: bytes, expected: str | None) -> None:
+    """When a role's pointer named a digest, the file must be the one it named."""
+    if expected is not None:
+        require(hashlib.sha256(raw).hexdigest() == expected, "result digest mismatch")
+
+
+def parse_result_pointer(raw: str, issued_path: str, label: str) -> dict[str, Any]:
+    """Parse the final response of a role whose result travels as a file; prose is not recoverable."""
+    require(isinstance(raw, str) and raw.strip(), f"{label}: response is empty")
+    try:
+        pointer = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise EvalFailure(f"{label}: response is not one raw JSON pointer: {error}") from error
+    require(isinstance(pointer, dict), f"{label}: response is not a JSON object")
+    schema = load_json(SCHEMA_DIR / "result-pointer.schema.json")
+    validate_schema(pointer, schema, schema, label)
+    require(re.fullmatch(r"[0-9a-f]{64}", pointer["sha256"]) is not None, f"{label}: digest format is invalid")
+    require(pointer["result_path"] == issued_path, f"{label}: result path is not the issued path")
+    return pointer
+
+
+def stop_allows_successor(result: dict[str, Any]) -> bool:
+    """Only a stop the host caused can be retried with the same brief."""
+    return (
+        result["status"] == "blocked"
+        and result["termination"] in SUCCESSOR_TERMINATIONS
+        and not result["blocker"]["needs_user_input"]
+    )
+
+
+def safe_error(error: Exception) -> str:
+    """Describe a validation error without echoing values the document controls."""
+    if isinstance(error, EvalFailure):
+        message = re.sub(r"^(\$[^\s:]*): .* is outside enum$", r"\1: value is outside enum", str(error), flags=re.S)
+        message = re.sub(r"^(\$[^\s:]*): unexpected keys .*$", r"\1: unexpected keys", message, flags=re.S)
+        return " ".join(message.split())[:240]
+    if isinstance(error, json.JSONDecodeError):
+        return f"invalid JSON at line {error.lineno} column {error.colno}"
+    if isinstance(error, UnicodeDecodeError):
+        return "not valid UTF-8"
+    return type(error).__name__
+
+
 def validate_review_archive(relative_path: str, result: dict[str, Any], label: str) -> None:
     text = resolve_repo_path(relative_path, label).read_text(encoding="utf-8")
-    blocks = re.findall(r"```json\s*(.*?)\s*```", text, flags=re.DOTALL)
-    require(blocks, f"{label}: review archive lacks a JSON block")
+    block = final_result_text(text, REVIEW_FENCE_INFOS)
+    require(block is not None, f"{label}: review archive lacks a JSON block")
     try:
-        archived_result = json.loads(blocks[-1])
+        archived_result = json.loads(block)
     except json.JSONDecodeError as error:
         raise EvalFailure(f"{label}: review archive JSON is invalid: {error}") from error
     require(archived_result == result, f"{label}: review archive disagrees with trace")
@@ -459,8 +600,9 @@ def execute_fixture_check(
     }
     require(asserted_calls.intersection(required_symbols), f"{label}: assertion does not call a target function")
     try:
+        # Fixtures name python3; run them with this interpreter, since some hosts only have `python`.
         completed = subprocess.run(
-            argv,
+            [sys.executable, *argv[1:]],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -502,7 +644,6 @@ def validate_gate_semantics(
         f"{label}: unnamed probe duplicates a named acceptance check",
     )
 
-    probe_results = [probe["result"] for probe in result["probes"]]
     for index, probe in enumerate(result["probes"]):
         execute_fixture_check(
             probe["check"],
@@ -512,6 +653,12 @@ def validate_gate_semantics(
             required_symbols,
             f"{label}.probes[{index}]",
         )
+    validate_gate_verdict(result, label)
+
+
+def validate_gate_verdict(result: dict[str, Any], label: str) -> None:
+    """The verdict must follow from the gate's own probes and findings."""
+    probe_results = [probe["result"] for probe in result["probes"]]
     if result["gate"] == "hold":
         require(all(item == "pass" for item in probe_results), f"{label}: held with a failed probe")
         require(not result["findings"], f"{label}: held with a new failed finding")
@@ -574,6 +721,11 @@ def validate_case(case: dict[str, Any]) -> None:
     developer_assignments: list[tuple[int, set[str]]] = []
     worker_index = 0
     required_worker_exit: str | None = None
+    last_worker: dict[str, Any] | None = None
+    last_worker_was_successor = False
+    traced_successions: list[tuple[str, str]] = []
+    seen_gate_findings: set[tuple[str, str]] = set()
+    gate_repair_pending = False
     latest_acceptance: dict[str, tuple[int, str]] = {}
     latest_review: str | None = None
     pending_fix_source: str | None = None
@@ -614,6 +766,22 @@ def validate_case(case: dict[str, Any]) -> None:
             require(event_type in {"fixer_change", "exit"}, f"{label}: {pending_fix_source} failure was bypassed")
         if detected_no_progress:
             require(event_type == "exit", f"{label}: work continued after no progress was detected")
+        if event.get("same_run_successor"):
+            require(
+                event_type in MUTATIONS and required_worker_exit is not None and last_worker is not None,
+                f"{label}: same-run successor without a stopped worker",
+            )
+            require(
+                stop_allows_successor(last_worker) and not last_worker_was_successor,
+                f"{label}: this stop does not allow a same-run successor",
+            )
+            require(
+                last_worker["role"] == ("fixer" if event_type == "fixer_change" else "developer"),
+                f"{label}: the successor does not continue the predecessor's assignment",
+            )
+            require(worker_index < len(run["worker_files"]), f"{label}: worker result archive is missing")
+            traced_successions.append((run["worker_files"][worker_index - 1], run["worker_files"][worker_index]))
+            required_worker_exit = None
         if required_worker_exit is not None:
             require(event_type == "exit", f"{label}: work continued after incomplete worker")
 
@@ -632,6 +800,7 @@ def validate_case(case: dict[str, Any]) -> None:
             if event_type == "fixer_change":
                 role = "fixer"
                 require(pending_fix_source is not None, f"{label}: fixer ran without a failed review or gate")
+                require(len(reviews) < 3, f"{label}: a repair after the third review would never be reviewed")
                 require(
                     set(event.get("failure_packet_keys", [])) == {"title", "file", "line", "evidence"},
                     f"{label}: fixer packet leaked or omitted context",
@@ -657,6 +826,8 @@ def validate_case(case: dict[str, Any]) -> None:
                 f"{case_id}.workers[{worker_index + 1}]",
             )
             worker_index += 1
+            last_worker = worker_result
+            last_worker_was_successor = bool(event.get("same_run_successor"))
             if worker_result["status"] == "completed":
                 if role == "fixer":
                     pending_fix_source = None
@@ -694,19 +865,20 @@ def validate_case(case: dict[str, Any]) -> None:
 
         elif event_type == "review":
             require(pending_fix_source is None, f"{label}: new review started before fixing failed findings")
-            require(set(event.get("brief_keys", [])) == REVIEW_BRIEF, f"{label}: reviewer brief is not allowlisted")
+            require(set(event.get("brief_keys", [])) - OPTIONAL_BRIEF_KEYS == REVIEW_BRIEF, f"{label}: reviewer brief is not allowlisted")
             claim_actor(event, label)
             validate_result("review", event["result"])
             validate_review_semantics(event["result"], label)
             failed_findings = [item for item in event["result"]["findings"] if item["severity"] == "failed"]
             failed_keys = {(item["file"], item["title"]) for item in failed_findings}
             if failed_findings:
-                if previous_failed_count is not None:
+                if previous_failed_count is not None and not gate_repair_pending:
                     detected_no_progress = len(failed_findings) >= previous_failed_count
-                detected_no_progress = detected_no_progress or bool(failed_keys & passed_failed_findings)
+                detected_no_progress = detected_no_progress or bool(failed_keys & (passed_failed_findings | seen_gate_findings))
             passed_failed_findings.update(active_failed_findings - failed_keys)
             active_failed_findings = failed_keys
             previous_failed_count = len(failed_findings)
+            gate_repair_pending = False
             reviews.append(event)
             latest_review = event["result"]["verdict"]
             reviewed_revision = revision
@@ -727,7 +899,7 @@ def validate_case(case: dict[str, Any]) -> None:
         elif event_type == "gate":
             require(snapshot is not None and not snapshot_dirty, f"{label}: gate target changed after freeze")
             require(reviewed_revision == revision, f"{label}: gate target lacks a current passing review")
-            require(set(event.get("brief_keys", [])) == GATE_BRIEF, f"{label}: gate brief is not allowlisted")
+            require(set(event.get("brief_keys", [])) - OPTIONAL_BRIEF_KEYS == GATE_BRIEF, f"{label}: gate brief is not allowlisted")
             claim_actor(event, label)
             validate_result("gate", event["result"])
             require(event["result"]["independence"] == expected_independence, f"{label}: independence label is incorrect")
@@ -741,6 +913,10 @@ def validate_case(case: dict[str, Any]) -> None:
             )
             gate_status = event["result"]["gate"]
             gate_result = event["result"]
+            gate_findings = {(item["file"], item["title"]) for item in event["result"]["findings"]}
+            detected_no_progress = detected_no_progress or bool(gate_findings & (seen_gate_findings | passed_failed_findings))
+            seen_gate_findings |= gate_findings
+            gate_repair_pending = event["result"]["gate"] == "fail"
             gate_results.append(event["result"])
             gate_revision = revision
             gate_count += 1
@@ -807,6 +983,12 @@ def validate_case(case: dict[str, Any]) -> None:
     else:
         require(relaxation["authorized"] is False, f"{case_id}: run claims unobserved authorization")
         require(relaxation["reason"] is None and relaxation["authorization"] is None, f"{case_id}: unauthorized relaxation metadata")
+    recorded_successions = [
+        (item["predecessor"], item["successor"])
+        for item in run.get("worker_successions", [])
+        if item.get("scope") == "same_run"
+    ]
+    require(recorded_successions == traced_successions, f"{case_id}: same-run successors disagree with the trace")
     validate_run_extensions(run, exit_reason, case_id)
     if exit_reason == "goal_met":
         require(gate_status == "hold", f"{case_id}: goal met without a held gate")
@@ -851,11 +1033,26 @@ def validate_run_extensions(run: dict[str, Any], exit_reason: str | None, label:
                 strength["rediscovered"] == strength["historical"],
                 f"{label}: goal met with oracle {oracle['id']} missing historical failures",
             )
-    # A stopped worker ends its run fail-closed; its successor runs in a follow-up run.
-    worker_files = set(run["worker_files"])
+    # A stopped worker ends its run fail-closed; its successor runs in a follow-up run, unless the
+    # user authorized one same-run successor in advance.
+    worker_files = run["worker_files"]
     preceding = [entry.rstrip("/") + "/" for entry in run.get("preceding_runs", [])]
+    same_run_successors = {
+        item["successor"] for item in run.get("worker_successions", []) if item.get("scope") == "same_run"
+    }
     for succession in run.get("worker_successions", []):
         require(succession["successor"] in worker_files, f"{label}: worker succession references an unarchived worker")
+        if succession.get("scope") == "same_run":
+            predecessor = succession["predecessor"]
+            require(predecessor in worker_files, f"{label}: same-run predecessor is not archived in this run")
+            require(succession["authorization"] == SUCCESSOR_AUTHORIZATION, f"{label}: same-run succession lacks advance authorization")
+            require(predecessor not in same_run_successors, f"{label}: an assignment gets at most one same-run successor")
+            position = worker_files.index(predecessor)
+            require(
+                worker_files[position + 1 : position + 2] == [succession["successor"]],
+                f"{label}: same-run successor does not directly follow its predecessor",
+            )
+            continue
         require(succession["predecessor"] not in worker_files, f"{label}: worker succession inside one run bypasses fail-closed exit")
         require(
             any(succession["predecessor"].startswith(prefix) for prefix in preceding),
@@ -863,12 +1060,41 @@ def validate_run_extensions(run: dict[str, Any], exit_reason: str | None, label:
         )
     for substitution in run.get("model_substitutions", []):
         require(substitution["from"] != substitution["to"], f"{label}: model substitution changed nothing")
+    iteration_gates = []
+    for iteration in run["iterations"]:
+        slot = iteration.get("gate")
+        if slot is not None:
+            require(iteration["verdict"] != "fail", f"{label}: iteration {iteration['iteration']} reached the gate after a failing review")
+            require(slot["gate_file"] in run["gate_files"], f"{label}: iteration {iteration['iteration']} gate is not archived")
+            iteration_gates.append(slot)
+    if iteration_gates:
+        require(iteration_gates[-1]["status"] == run["gate"]["status"], f"{label}: last iteration gate disagrees with the run gate")
+
+
+def require_same_keys(example: Any, schema: dict[str, Any], root: dict[str, Any], path: str) -> None:
+    """An example in the instructions must use exactly the fields its schema defines."""
+    if "$ref" in schema:
+        schema = resolve_ref(root, schema["$ref"])
+    if isinstance(example, dict):
+        require(set(example) == set(schema["properties"]), f"{path}: example fields disagree with the schema")
+        for key, value in example.items():
+            require_same_keys(value, schema["properties"][key], root, f"{path}.{key}")
+    elif isinstance(example, list) and example and "items" in schema:
+        require_same_keys(example[0], schema["items"], root, f"{path}[0]")
+
+
+def validate_gate_example(skill_text: str) -> None:
+    examples = [body for info, body, _ in fenced_blocks(skill_text) if info == ["json", "veriloop-gate"]]
+    require(len(examples) == 1, "run-review-loop skill must show exactly one gate result example")
+    schema = load_json(SCHEMA_DIR / "gate-result.schema.json")
+    require_same_keys(json.loads(examples[0]), schema, schema, "gate example")
 
 
 def validate_skill_contracts() -> None:
     text = (ROOT / "skills" / "run-review-loop" / "SKILL.md").read_text(encoding="utf-8")
     for label, pattern in SKILL_CONTRACTS.items():
         require(re.search(pattern, text) is not None, f"run-review-loop skill lost contract: {label}")
+    validate_gate_example(text)
     draft = (ROOT / "skills" / "draft-spec" / "SKILL.md").read_text(encoding="utf-8")
     for label, pattern in DRAFT_SPEC_CONTRACTS.items():
         require(re.search(pattern, draft) is not None, f"draft-spec skill lost contract: {label}")
@@ -894,10 +1120,12 @@ def validate_skill_contracts() -> None:
     require(rows == chapters, "exit documents PRD chapter table disagrees with scripts/check_prd.py")
 
 
-def expect_rejected(case: dict[str, Any], mutation: str) -> None:
+def expect_rejected(case: dict[str, Any], mutation: str, reason: str | None = None) -> None:
     try:
         validate_case(case)
-    except EvalFailure:
+    except EvalFailure as error:
+        if reason is not None:
+            require(reason in str(error), f"guard {mutation!r} was rejected for another reason: {error}")
         return
     raise EvalFailure(f"guard mutation was not rejected: {mutation}")
 
@@ -1432,7 +1660,200 @@ def run_extension_tests(cases: list[dict[str, Any]]) -> tuple[int, int]:
     same_run["run_result"]["worker_successions"][0]["predecessor"] = same_run["run_result"]["worker_files"][0]
     expect_rejected(same_run, "succession inside one run")
     expect_rejected(with_succession("elsewhere/workers/developer-1.json", None), "succession from a run that is not preceding")
-    return positives, 7
+    guards = 7
+
+    def with_iteration_gate(status: str | None = None, gate_file: str | None = None) -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        run["iterations"][-1]["gate"] = {
+            "status": status or run["gate"]["status"],
+            "failed_count": 0,
+            "gate_file": gate_file or run["gate_files"][-1],
+        }
+        return case
+
+    timeout_file = "evals/fixtures/archives/developer-timeout.json"
+
+    def with_same_run_successor(
+        worker_file: str = timeout_file,
+        transport: str = "timeout",
+        authorization: str = SUCCESSOR_AUTHORIZATION,
+    ) -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        position = next(index for index, event in enumerate(case["events"]) if event["type"] == "developer_change")
+        stopped = copy.deepcopy(case["events"][position])
+        stopped["actor"] = "developer-stopped"
+        stopped["transport"] = transport
+        case["events"][position]["same_run_successor"] = True
+        case["events"].insert(position, stopped)
+        successor = run["worker_files"][0]
+        run["worker_files"].insert(0, worker_file)
+        run["worker_successions"] = [
+            {
+                "predecessor": worker_file,
+                "successor": successor,
+                "reason": "stalled: no progress for 20 minutes",
+                "authorization": authorization,
+                "scope": "same_run",
+            }
+        ]
+        return case
+
+    def with_issued_paths() -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        for event in case["events"]:
+            if event["type"] in {"review", "gate"}:
+                event["brief_keys"].extend(["result_path", "temp_path"])
+        return case
+
+    repair_title = "The repair keeps ISO dates"
+    fixer_file = "evals/fixtures/archives/fixer-clean.json"
+    failed_gate_file = "evals/fixtures/archives/clean-gate-failed.json"
+
+    def fixer_event(actor: str) -> dict[str, Any]:
+        return {
+            "type": "fixer_change",
+            "actor": actor,
+            "transport": "completed",
+            "required_checks": [repair_title],
+            "failure_packet_keys": ["title", "file", "line", "evidence"],
+        }
+
+    def with_recurring_gate() -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        run = case["run_result"]
+        failed_gate = load_json(ROOT / failed_gate_file)
+        gate_position = next(index for index, event in enumerate(case["events"]) if event["type"] == "gate")
+        head = case["events"][1:gate_position]
+        first_gate = dict(case["events"][gate_position], actor="gate-failed-1", result=failed_gate)
+        second_pass = copy.deepcopy([event for event in head if event["type"] in {"acceptance", "review", "snapshot"}])
+        for event in second_pass:
+            if event["type"] == "review":
+                event["actor"] = "reviewer-after-gate"
+        second_gate = dict(case["events"][gate_position], actor="gate-failed-2", result=failed_gate)
+        case["events"] = [
+            case["events"][0], *head, first_gate, fixer_event("fixer-gate-1"), *second_pass, second_gate,
+            {"type": "exit", "reason": "no_progress"},
+        ]
+        run["exit_reason"] = "no_progress"
+        run["worker_files"] = [*run["worker_files"], fixer_file]
+        run["gate_files"] = [failed_gate_file, failed_gate_file]
+        run["gate"] = {"status": "fail", "snapshot": failed_gate["snapshot"], "independence": "strict"}
+        run["iterations"] = [run["iterations"][0], dict(run["iterations"][0], iteration=2)]
+        run["acceptance"] = run["acceptance"] * 2
+        return case
+
+    def with_new_failure_after_gate_repair() -> dict[str, Any]:
+        case = with_recurring_gate()
+        run = case["run_result"]
+        review_file = "evals/fixtures/archives/after-gate-review-failed.md"
+        failed_review = json.loads(final_result_text(resolve_repo_path(review_file, "fixture").read_text(encoding="utf-8"), REVIEW_FENCE_INFOS))
+        reviews = [event for event in case["events"] if event["type"] == "review"]
+        reviews[-1]["result"] = failed_review
+        position = next(index for index, event in enumerate(case["events"]) if event is reviews[-1])
+        case["events"] = [*case["events"][: position + 1], {"type": "exit", "reason": "no_progress"}]
+        run["gate_files"] = run["gate_files"][:1]
+        run["iterations"][1].update(verdict="fail", failed_count=1, warning_count=0, review_file=review_file)
+        return case
+
+    def with_repair_after_third_review() -> dict[str, Any]:
+        case = copy.deepcopy(base)
+        developer = next(event for event in case["events"] if event["type"] == "developer_change")
+        brief = next(event for event in case["events"] if event["type"] == "review")["brief_keys"]
+        plan = {
+            "invariant": "ISO dates are preserved",
+            "root_cause": "fixture",
+            "affected_paths": ["a.py"],
+            "implementation_steps": ["fixture"],
+            "verification_cases": ["fixture"],
+            "non_goals": [],
+        }
+
+        def review(actor: str, files: list[str]) -> dict[str, Any]:
+            findings = [
+                {"severity": "failed", "title": repair_title, "file": file, "line": 1, "confidence": "confirmed",
+                 "fix_hint": "fixture", "repair_plan": plan}
+                for file in files
+            ]
+            return {"type": "review", "actor": actor, "brief_keys": brief, "result": {"verdict": "fail", "findings": findings}}
+
+        case["events"] = [
+            case["events"][0], developer,
+            review("reviewer-1", ["a.py", "b.py", "c.py"]), fixer_event("fixer-1"),
+            review("reviewer-2", ["a.py", "b.py"]), fixer_event("fixer-2"),
+            review("reviewer-3", ["a.py"]), fixer_event("fixer-3"),
+            {"type": "exit", "reason": "iteration_cap"},
+        ]
+        case["run_result"]["worker_files"] = [*case["run_result"]["worker_files"], fixer_file, fixer_file, fixer_file]
+        return case
+
+    validate_case(with_iteration_gate())
+    validate_case(with_same_run_successor())
+    validate_case(with_issued_paths())
+    validate_case(with_recurring_gate())
+    positives += 4
+
+    def rejected_cases() -> list[tuple[dict[str, Any], str, str]]:
+        unflagged = with_same_run_successor()
+        for event in unflagged["events"]:
+            event.pop("same_run_successor", None)
+        unrecorded = with_same_run_successor()
+        del unrecorded["run_result"]["worker_successions"]
+        flagged_without_stop = copy.deepcopy(base)
+        next(event for event in flagged_without_stop["events"] if event["type"] == "developer_change")["same_run_successor"] = True
+        second = with_same_run_successor()
+        run = second["run_result"]
+        position = next(index for index, event in enumerate(second["events"]) if event.get("same_run_successor"))
+        again = copy.deepcopy(second["events"][position])
+        again["actor"] = "developer-stopped-again"
+        again["transport"] = "timeout"
+        second["events"].insert(position, again)
+        run["worker_files"].insert(1, timeout_file)
+        swapped = with_same_run_successor()
+        pair = swapped["run_result"]["worker_successions"][0]
+        pair["predecessor"], pair["successor"] = pair["successor"], pair["predecessor"]
+        continued_after_recurrence = with_recurring_gate()
+        continued_after_recurrence["events"][-1] = fixer_event("fixer-gate-2")
+        return [
+            (with_iteration_gate(status="fail"), "iteration gate disagreeing with the run gate", "last iteration gate disagrees"),
+            (with_iteration_gate(gate_file="gates/unknown.json"), "iteration gate that is not archived", "gate is not archived"),
+            (with_same_run_successor("evals/fixtures/archives/developer-tool-error.json", "tool_error"), "successor after a tool error", "does not allow a same-run successor"),
+            (with_same_run_successor(authorization="user said so"), "same-run successor without advance authorization", "lacks advance authorization"),
+            (unflagged, "same-run successor the trace did not flag", "work continued after incomplete worker"),
+            (unrecorded, "same-run successor missing from run.json", "same-run successors disagree with the trace"),
+            (swapped, "recorded pair that is not the traced pair", "same-run successors disagree with the trace"),
+            (flagged_without_stop, "successor flag without a stopped worker", "same-run successor without a stopped worker"),
+            (second, "second successor for one assignment", "does not allow a same-run successor"),
+            (continued_after_recurrence, "repair after a gate finding recurred", "work continued after no progress"),
+            (with_repair_after_third_review(), "repair after the third review", "would never be reviewed"),
+            (with_new_failure_after_gate_repair(), "no-progress exit on a new failure after a gate repair", "no-progress exit lacks"),
+        ]
+
+    for case, label, reason in rejected_cases():
+        expect_rejected(case, label, reason)
+    guards += len(rejected_cases())
+    return positives, guards
+
+
+def run_result_pointer_tests() -> tuple[int, int]:
+    issued = "/tmp/veriloop-7-results/fixer-2-1.json"
+    pointer = {"result_path": issued, "bytes": 120, "sha256": "a" * 64}
+    require(parse_result_pointer(json.dumps(pointer), issued, "pointer") == pointer, "valid pointer was not accepted")
+    guards = {
+        "prose around the pointer": "done: " + json.dumps(pointer),
+        "another path": json.dumps(dict(pointer, result_path="/tmp/other.json")),
+        "an extra field": json.dumps(dict(pointer, verdict="pass")),
+        "a malformed digest": json.dumps(dict(pointer, sha256="xyz")),
+        "an empty response": "   ",
+    }
+    for label, raw in guards.items():
+        try:
+            parse_result_pointer(raw, issued, label)
+        except EvalFailure:
+            continue
+        raise EvalFailure(f"result pointer guard accepted {label}")
+    return 1, len(guards)
 
 
 def main() -> int:
@@ -1455,12 +1876,14 @@ def main() -> int:
     worker_positive_count, worker_guard_count = run_worker_contract_tests()
     fallback_positive_count, fallback_guard_count = run_worker_fallback_tests()
     extension_positive_count, extension_guard_count = run_extension_tests(cases)
+    pointer_positive_count, pointer_guard_count = run_result_pointer_tests()
     print(
         f"\n{len(cases)} contract traces passed; {transition_count} authorized reduced transition passed; "
         f"{worker_exit_count} worker-exit transitions passed; {guard_count} guard mutations rejected; "
         f"{worker_positive_count} worker results passed; {worker_guard_count} worker-result mutations rejected; "
         f"{fallback_positive_count} raw-JSON fallback paths passed; {fallback_guard_count} fallback guards rejected; "
-        f"{extension_positive_count} phase/oracle extensions passed; {extension_guard_count} extension guards rejected."
+        f"{extension_positive_count} phase/oracle extensions passed; {extension_guard_count} extension guards rejected; "
+        f"{pointer_positive_count} result pointer passed; {pointer_guard_count} pointer guards rejected."
     )
     return 0
 

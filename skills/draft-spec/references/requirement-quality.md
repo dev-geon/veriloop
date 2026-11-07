@@ -69,6 +69,18 @@ Read the committed sections against each other. Each of these is a contradiction
 A contradiction is resolved by asking the user which statement holds, never by quietly
 editing the one that looks wrong.
 
+## Statements without a criterion
+
+Walk the mandatory statements in Scope, Target behavior, and Constraints one at a time,
+including each row of a table. A statement with no criterion is one the loop may never
+build or check, and a reviewer will find it only by chance.
+
+- Each statement needs a criterion whose check would fail if the statement were not
+  implemented, or a stated reason why it has none. Several statements may share a
+  criterion when its check covers each of them.
+- Resolve a gap by adding a criterion, or by asking the user whether the statement is
+  really mandatory. Do not delete or soften the statement to close the gap quietly.
+
 ## Non-functional lens
 
 During decision-surface enumeration, check whether the work commits to any of these.

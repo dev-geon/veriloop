@@ -92,17 +92,21 @@ with tempfile.TemporaryDirectory() as tmp:
     review_text = '# Iteration 1\n\nNo findings.\n\n```json\n{"verdict": "pass", "findings": []}\n```\n'
 
     def archive(run_value=None, workers=None, gate_value=None, staging_dirs=None, extra=(), worker_paths=None,
-                review_value=None):
+                review_value=None, gate_text=None, with_gate=True):
         case = root / 'case'
         shutil.rmtree(case, ignore_errors=True)
         workers = workers if workers is not None else {'dev-2.json': completed}
         paths = worker_paths or [write_json(case / 'workers' / name, value) for name, value in workers.items()]
         gate_path = write_json(case / 'gate-1.json', gate if gate_value is None else gate_value)
+        if gate_text is not None:
+            gate_path.write_text(gate_text, encoding='utf-8')
         review_path = case / 'review-1.md'
         review_path.write_text(review_text if review_value is None else review_value, encoding='utf-8')
         run_path = write_json(case / 'run.json', run if run_value is None else run_value)
         argv = [sys.executable, str(SCRIPT), '--agent-review', str(agent), '--run-json', str(run_path),
-                '--gate', str(gate_path), '--review', str(review_path)]
+                '--review', str(review_path)]
+        if with_gate:
+            argv += ['--gate', str(gate_path)]
         for path in paths:
             argv += ['--worker', str(path)]
         for path in (staging_dirs if staging_dirs is not None else [staging]):
@@ -162,6 +166,23 @@ with tempfile.TemporaryDirectory() as tmp:
     assert listing() == ['001', '002'], listing()
     assert not staging.exists() and agent.exists() and (run_dir / 'run.json').exists()
     assert (runs / '002/artifacts/dev-2/evidence.txt').exists()
+    make_staging()
+
+    # 2b. The tagged fence the loop requires is read like a plain one, and other tags are not review results.
+    tagged = '# Iteration 1\n\n```json veriloop-review\n{"verdict": "pass", "findings": []}\n```\n'
+    result = archive(review_value=tagged)
+    assert result.returncode == 0, result.stderr
+    shutil.rmtree(runs / '003')
+    expect_rejected('a report summary block is not a review result', 'no machine-readable JSON block',
+                    review_value='# Iteration 1\n\n```json veriloop-report\n{"verdict": "pass", "findings": []}\n```\n')
+
+    # 2c. A results directory passed as staging is removed with the rest, after its files are archived.
+    results = root / 'results'
+    worker_copy = write_json(results / 'dev-2.json', completed)
+    result = archive(worker_paths=[worker_copy], staging_dirs=[staging, results], extra=['--delete-staging'])
+    assert result.returncode == 0, result.stderr
+    assert not results.exists() and (runs / '003/workers/dev-2.json').exists()
+    shutil.rmtree(runs / '003')
     make_staging()
 
     # 3. Rejections: exit 1, no new run directory, no .partial left, staging intact.
@@ -315,4 +336,87 @@ with tempfile.TemporaryDirectory() as tmp:
         link.unlink()
     assert listing() == ['001', '002', '003', '004', '005'], listing()
 
-print(f'PASS archive CLI: 5 archived runs and {rejected} rejection cases{symlink_note}')
+    # 7. An iteration records its gate result, and the record must agree with the archived gate.
+    def with_iteration_gate(**changes):
+        value = copy.deepcopy(run)
+        value['iterations'][0]['gate'] = {'status': 'hold', 'failed_count': 0, 'gate_file': 'scratch/gate-1.json', **changes}
+        return value
+
+    result = archive(run_value=with_iteration_gate())
+    assert result.returncode == 0, result.stderr
+    archived_run = json.loads((runs / '006/run.json').read_text(encoding='utf-8'))
+    assert archived_run['iterations'][0]['gate']['gate_file'] == 'gates/gate-1.json', archived_run['iterations']
+    expect_rejected('iteration gate status disagrees', 'gate status disagrees', run_value=with_iteration_gate(status='fail'))
+    expect_rejected('iteration gate count disagrees', 'gate failed_count disagrees', run_value=with_iteration_gate(failed_count=2))
+    expect_rejected('iteration gate is not archived', 'is not an archived gate', run_value=with_iteration_gate(gate_file='gate-9.json'))
+    failing_review = ('# Iteration 1\n\n```json veriloop-review\n{"verdict": "fail", "findings": [{"severity": "failed", "title": "t", '
+                      '"file": "a.py", "line": 1, "confidence": "confirmed", "fix_hint": "f", "repair_plan": {"invariant": "i", '
+                      '"root_cause": "r", "affected_paths": ["a.py"], "implementation_steps": ["s"], "verification_cases": ["v"], '
+                      '"non_goals": []}}]}\n```\n')
+    bad = with_iteration_gate()
+    bad['iterations'][0].update(verdict='fail', failed_count=1)
+    expect_rejected('gate after a failing review', 'reached the gate after a failing review', run_value=bad, review_value=failing_review)
+
+    # 8. One same-run successor needs advance authorization and a stop the host caused.
+    def same_run(*pairs, authorization='config preauthorized_successor', **changes):
+        value = copy.deepcopy(run)
+        value['worker_successions'] = [{'predecessor': before, 'successor': after, 'reason': 'stalled',
+                                        'authorization': authorization, 'scope': 'same_run'} for before, after in pairs]
+        value.update(changes)
+        return value
+
+    continued = same_run(('dev-1.json', 'dev-2.json'))
+    pair = {'dev-1.json': stalled, 'dev-2.json': completed}
+    expect_rejected('same-run successor without the configuration key', 'does not set preauthorized_successor',
+                    run_value=continued, workers=pair)
+    config = agent / 'config.json'
+    config.write_text(json.dumps({'preauthorized_successor': False}), encoding='utf-8')
+    expect_rejected('same-run successor with the key turned off', 'does not set preauthorized_successor',
+                    run_value=continued, workers=pair)
+    config.write_text(json.dumps({'preauthorized_successor': True}), encoding='utf-8')
+    result = archive(run_value=continued, workers=pair)
+    assert result.returncode == 0, result.stderr
+    archived_run = json.loads((runs / '007/run.json').read_text(encoding='utf-8'))
+    assert archived_run['exit_reason'] == 'goal_met' and archived_run['worker_files'] == ['workers/dev-1.json', 'workers/dev-2.json']
+    assert archived_run['worker_successions'][0]['predecessor'] == 'workers/dev-1.json', archived_run['worker_successions']
+    assert archived_run['worker_successions'][0]['successor'] == 'workers/dev-2.json', archived_run['worker_successions']
+    expect_rejected('same-run successor with another authorization', 'lacks advance authorization',
+                    run_value=same_run(('dev-1.json', 'dev-2.json'), authorization='user said so'), workers=pair)
+    waiting = copy.deepcopy(stalled); waiting['blocker']['needs_user_input'] = True
+    expect_rejected('predecessor waiting for the user', 'did not stop for a host-caused reason',
+                    run_value=continued, workers={'dev-1.json': waiting, 'dev-2.json': completed})
+    limited = dict(stalled, termination='context_limit', blocker={'code': 'context_limit', 'message': 'out of context', 'needs_user_input': False})
+    expect_rejected('predecessor out of context', 'did not stop for a host-caused reason',
+                    run_value=continued, workers={'dev-1.json': limited, 'dev-2.json': completed})
+    expect_rejected('successor does not follow its predecessor', 'does not directly follow',
+                    run_value=continued, workers={'dev-2.json': completed, 'dev-1.json': stalled})
+    expect_rejected('second successor for one assignment', 'at most one same-run successor',
+                    run_value=same_run(('dev-1.json', 'dev-2.json'), ('dev-2.json', 'dev-3.json')),
+                    workers={'dev-1.json': stalled, 'dev-2.json': stalled, 'dev-3.json': completed})
+    expect_rejected('successor that also stopped cannot claim the goal', 'requires exit_reason worker_blocked',
+                    run_value=continued, workers={'dev-1.json': stalled, 'dev-2.json': stalled})
+    result = archive(run_value=same_run(('dev-1.json', 'dev-2.json'), exit_reason='worker_blocked',
+                                        gate={'status': 'not_run', 'snapshot': None, 'independence': None},
+                                        iterations=[], acceptance=[]),
+                     workers={'dev-1.json': stalled, 'dev-2.json': stalled})
+    assert result.returncode == 0, result.stderr
+    expect_rejected('fixer continuing a developer assignment', 'does not continue the predecessor',
+                    run_value=continued, workers={'dev-1.json': stalled, 'dev-2.json': dict(completed, role='fixer')})
+    config.unlink()
+
+    # 9. Every saved form of a result is read, and a goal needs its last gate to hold on the same snapshot.
+    result = archive(review_value=json.dumps({'verdict': 'pass', 'findings': []}))
+    assert result.returncode == 0, ('raw review', result.stderr)
+    result = archive(gate_text='# Gate\n\n```json veriloop-gate\n' + json.dumps(gate) + '\n```\n')
+    assert result.returncode == 0, ('report ending in a gate block', result.stderr)
+    expect_rejected('review with prose after its block', 'text follows the result block', review_value=review_text + '\n후기\n')
+    expect_rejected('goal without a gate file', 'last archived gate to hold', with_gate=False)
+    bad = copy.deepcopy(gate); bad['gate'] = 'fail'; bad['probes'][0]['result'] = 'fail'
+    expect_rejected('goal with a failed last gate', 'last archived gate to hold', gate_value=bad)
+    bad = copy.deepcopy(gate); bad['probes'][0]['result'] = 'fail'
+    expect_rejected('held gate with a failed probe', 'held with a failed probe', gate_value=bad)
+    bad = copy.deepcopy(run); bad['gate']['snapshot'] = 'sha256:other'
+    expect_rejected('goal with another snapshot', 'on the same snapshot', run_value=bad)
+    archived_count = len(listing())
+
+print(f'PASS archive CLI: {archived_count} archived runs and {rejected} rejection cases{symlink_note}')

@@ -36,7 +36,8 @@ When `run-review-loop` invokes this skill in strict blind mode, treat the review
 isolated evaluation:
 
 - Accept only the strict-blind invocation marker, repository path, frozen review
-  target, confirmed specification, scope bounds, and risk focus.
+  target, confirmed specification, scope bounds, risk focus, and the temporary workspace
+  and result paths the controller issued.
 - Do not accept or request the developer's reasoning, fixer explanation, prior review
   reports, findings ledger, acceptance-check results, or gate probes.
 - Do not read `.agent-review/`, `REVIEW.md`, `PRD.md`, `DECISIONS.md`, worker artifacts
@@ -195,7 +196,8 @@ JSON block as they are. Use this structure:
 
 #### [Failed] <title>             ← must be fixed before this lands: broken behavior,
                                     silent data corruption, unbounded cost growth,
-                                    serious performance defect, written-rule violation
+                                    serious performance defect, written-rule violation,
+                                    confirmed specification violation
 <file>:<line> — evidence, why it fails, suggested fix, and a compact repair plan
 covering the invariant, root cause, affected paths, implementation steps, verification
 cases, and non-goals. (Confirmed / Needs verification)
@@ -213,6 +215,12 @@ Rules for the report:
 - Two severities only. **Failed** = the change must not land as-is. **Warning** =
   worth fixing, but a human may reasonably accept it. Order Failed findings worst
   first (broken behavior and data corruption above cost, cost above rule violations).
+- A Confirmed contradiction of a committed statement in the specification's Scope,
+  Target behavior, or Constraints is **Failed**, whether or not an acceptance criterion
+  names it; quote the statement in the evidence. An acceptance criterion checks a
+  requirement, it does not limit it. This covers direct contradictions only: a Needs
+  verification suspicion, behavior the specification leaves open, and readability or
+  convention drift keep their usual severity.
 - Verdict follows from the findings: any Failed → **Fail**; only Warnings →
   **Pass with warnings**; nothing → **Pass**.
 - The "통과한 검사" (passed checks) section is not filler — it tells the reader which risks were
@@ -221,8 +229,10 @@ Rules for the report:
   with a confident "checked and clean" section is a perfectly good review.
 - Suggest fixes but do not apply them unless the user asks. The deliverable of this
   skill is the review.
-- In strict loop mode return the report and JSON to the controller without writing
-  target files; the controller owns persistence. For standalone review, persist the
+- In strict loop mode never write target files. When the controller issued a result
+  path, write the report and JSON block there and end with the pointer object defined by
+  `../../schemas/result-pointer.schema.json`; otherwise return the report and JSON to the
+  controller. The controller owns persistence. For standalone review, persist the
   final report as `REVIEW.md` in the same directory as the confirmed
   spec (`IA.md`), including the fenced machine-readable JSON block; overwrite it on
   a re-review of the same work. If the existing `REVIEW.md` is a loop report (it
@@ -238,7 +248,8 @@ the `run-review-loop` and `apply-review-findings` skills, CI scripts — consume
 review without parsing prose.
 
 For an interactive review, keep the prose report as the source of truth and end it
-with the fenced JSON object below. When the host supplies the schema as a native
+with the fenced JSON object below. In strict loop mode tag the fence
+`json veriloop-review`. When the host supplies the schema as a native
 structured-output constraint, or CI explicitly requests raw JSON, return only the
 schema-conforming object with no fence or surrounding prose. Never make automation
 extract JSON from prose.

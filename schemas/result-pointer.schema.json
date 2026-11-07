@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "result-pointer.schema.json",
+  "title": "Veriloop role result pointer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["result_path", "bytes", "sha256"],
+  "properties": {
+    "result_path": { "type": "string", "minLength": 1 },
+    "bytes": { "type": "integer", "minimum": 1 },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

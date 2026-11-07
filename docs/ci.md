@@ -1,13 +1,14 @@
 # CI and hook integration
 
-Veriloop publishes six JSON Schema contracts:
+Veriloop publishes seven JSON Schema contracts:
 
 - `schemas/worker-result.schema.json` — developer and fixer completion output;
 - `schemas/review-result.schema.json` — standalone review and PR gate output;
 - `schemas/gate-result.schema.json` — late-bound final gate output;
 - `schemas/run-result.schema.json` — archived `run.json` output;
 - `schemas/review-report.schema.json` — the single summary block at the end of `REVIEW.md`;
-- `schemas/progress.schema.json` — the advisory live progress record under `.agent-review/progress/` (never a gate input).
+- `schemas/progress.schema.json` — the advisory live progress record under `.agent-review/progress/` (never a gate input);
+- `schemas/result-pointer.schema.json` — the final response of a role whose result travels as a file.
 
 Use native structured output when the host supports it. Otherwise require raw JSON and
 validate it before reading the verdict. Never extract JSON from prose with a regular
@@ -37,9 +38,10 @@ distinguish a completed task from a partial response, failed tool call, timeout,
 cancellation, context limit, or invalid result. The host's delegation/tool termination
 status is authoritative and is checked before the response body.
 
-Native structured output is preferred. When it is unavailable, the worker returns one
-raw JSON object as its entire final response. The controller parses the whole response
-with a JSON parser and validates the schema; it never extracts an object from prose with
+Native structured output is preferred. When it is unavailable, the worker writes the object
+to its issued result file and returns a pointer to it, or, when the host cannot write that
+file, returns one raw JSON object as its entire final response. The controller parses the
+whole response with a JSON parser and validates the schema; it never extracts an object from prose with
 a regular expression. One format-only retry may repair serialization without rerunning
 tools or editing code. A second invalid result exits fail-closed as
 `worker_result_invalid`.
@@ -64,6 +66,9 @@ review-loop instructions and schemas:
 python3 evals/run_contract_evals.py
 ```
 
+Where `python3` does not start Python, as on many Windows machines, use `python`; the
+suite runs its fixture commands with the interpreter that started it.
+
 It checks three controller traces: a clean diff held by late-bound probes, a seeded
 failure repaired before a fresh review identity, and a strict-blind capability failure
 that exits before code changes. It also verifies an explicitly authorized reduced-mode
@@ -84,8 +89,16 @@ invariant oracle, and a worker succession recorded by a follow-up run, and rejec
 extension mutations: a loop-phase criterion hidden as deferred, a post-deploy criterion
 claimed inside the loop, `goal_met` with a failing oracle, `goal_met` with an oracle that
 missed a historical failure, a succession to an unarchived worker, a succession inside
-one run (which would bypass the fail-closed worker exit), and a succession from a run
-that is not listed in `preceding_runs`. It also checks that the run-review-loop and
+one run without `scope: same_run` (which would bypass the fail-closed worker exit), and a
+succession from a run that is not listed in `preceding_runs`.
+
+Since 0.20.0 it also accepts an iteration's `gate` result, a pre-authorized successor in the
+same run, and a result path in a blind brief, and rejects their misuse: an iteration gate that
+disagrees with the run or is not archived, a successor after a stop the host did not cause, one
+without the exact authorization or without the trace's successor flag, a second successor for
+one assignment, a same-run succession the trace did not perform, a repair after a gate finding
+recurred or after the third review, and a result pointer with surrounding prose, another path,
+an extra field, or a malformed digest. These guards also check the reason for each rejection. It also checks that the run-review-loop and
 draft-spec instructions still contain the preflight, phase, oracle, stall, succession,
 temporary-path and archive rules, the report-block and product-document rules in
 `skills/run-review-loop/references/exit-documents.md`, the PRD chapter list (which must
@@ -93,10 +106,12 @@ match `scripts/check_prd.py` in both the skill and the reference), the Korean do
 rule, the single invariant-oracle definition in
 `skills/draft-spec/references/invariant-oracle.md`, and the requirement-quality rules
 (non-functional lens, permanent `AC-<n>` identifiers, one outcome per criterion, and the
-guess-hunt contradiction check).
+guess-hunt contradiction and statement-tracing checks), and the preflight rules for a
+missing harness and for `post_deploy` readiness. It also checks that the gate result example in the
+run-review-loop instructions uses exactly the fields of `schemas/gate-result.schema.json`.
 
 The trace model detects no progress by finding identity (file and title) and failed
-counts. Recurrence of the same invariant under a different title is a controller
+counts, leaving the review right after a gate repair out of the count comparison. Recurrence of the same invariant under a different title is a controller
 judgment recorded in the ledger; the trace evaluator does not model it.
 
 ## Run archiving and REVIEW.md validation
@@ -105,12 +120,23 @@ judgment recorded in the ledger; the trace evaluator does not model it.
 worker results, gate results, and review files; copies every declared artifact under
 its staging-relative path and verifies its byte count and SHA-256 before and after the
 copy; rewrites archived paths relative to the run directory; validates each worker result, gate result, review JSON
-block (against its iteration's verdict and counts), and the run record (deferred phases,
-oracle strength, succession references, and the fail-closed exit after an incomplete
-worker); and only then moves the directory into place and, with `--delete-staging`,
+block (against its iteration's verdict and counts), each iteration's `gate` result (against
+its archived gate; a `goal_met` run also needs its last archived gate to hold on the same
+snapshot), and the run record (deferred phases, oracle strength, succession
+references, and the fail-closed exit after an incomplete worker, which a same-run successor
+may lift only when `.agent-review/config.json` sets `preauthorized_successor: true` and the
+predecessor stopped with `timeout` or `cancelled`); and only then moves the directory into place and, with `--delete-staging`,
 removes the staging directories. Exit 1 means nothing was archived and staging is
 untouched. Exit 3 means the archive is complete but staging cleanup failed; finish the
 cleanup instead of archiving again.
+
+`scripts/check_review_result.py` validates one reviewer result (raw JSON, or a report
+ending in a ` ```json ` or ` ```json veriloop-review ` block), and
+`scripts/check_gate_result.py` validates one gate result: its schema, that the verdict
+follows from its probes and findings, and with `--snapshot` that it judged the frozen
+target. Both are read-only and never echo values from the document. Both, and
+`scripts/check_worker_result.py`, take `--sha256` to confirm that the file is the one a
+role's result pointer named.
 
 `scripts/check_review_report.py` checks that a `REVIEW.md` ends with exactly one
 ` ```json veriloop-report ` block conforming to `schemas/review-report.schema.json` and
@@ -131,6 +157,7 @@ python3 evals/test_archive_run.py
 python3 evals/test_review_report.py
 python3 evals/test_prd.py
 python3 evals/test_progress.py
+python3 evals/test_result_cli.py
 ```
 
 This suite validates controller state, recorded identities, allowlisted fields, schemas,

@@ -18,7 +18,7 @@ SCHEMA = json.loads((ROOT / 'schemas/progress.schema.json').read_text(encoding='
 
 def run(agent_review, *args):
     return subprocess.run([sys.executable, str(SCRIPT), '--agent-review', str(agent_review), *args],
-                          capture_output=True, text=True, env=ENV)
+                          capture_output=True, text=True, encoding='utf-8', env=ENV)
 
 
 def main():

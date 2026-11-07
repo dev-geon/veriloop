@@ -36,7 +36,8 @@ when the draft starts, `draft-` followed by the UTC start time
     python3 ../../scripts/report_progress.py --agent-review .agent-review --id ID \
       --flow draft --step STEP [--spec <IA.md path>] [--status STATUS]
 
-(the script path is relative to this skill). The steps are `survey` (Step 1), `design` (dispatching the design partner), `interview`
+(the script path is relative to this skill; where `python3` does not start Python, as on
+many Windows machines, use the interpreter that does, such as `python`). The steps are `survey` (Step 1), `design` (dispatching the design partner), `interview`
 (each question round, with `--status waiting_user` while the user answers), `draft`
 (Step 3), `preflight` (running the acceptance checks), `guess_hunt` (Step 4), and
 `confirm` (Step 5, `--status waiting_user`). Add `--spec` as soon as the `IA.md` path is
@@ -189,7 +190,10 @@ observation). Only loop-phase criteria decide whether the loop succeeds; the oth
 reported as deferred until someone runs them. Phrase a criterion against measured
 baseline facts (an existing warning count, already-failing tests, known flaky tests)
 rather than an ideal the baseline cannot meet, and make a search-based check exclude
-the specification and other documents that quote its own pattern.
+the specification and other documents that quote its own pattern. Have a check write its
+evidence outside the repository (a temporary path or the run's staging directory), never
+into the worktree: a file written there dirties every run and changes the digest that
+freezes the gate's target.
 
 **Invariant oracles.** When the work must hold an invariant over a space too large to
 enumerate by hand, or when `run-review-loop` routes here because an invariant kept
@@ -207,6 +211,25 @@ permission or credential, or a read-only guard that trips. Record what each chec
 returned on the baseline. Do not execute post-deploy or destructive checks; confirm only
 that their entry point exists. Raise every failure as a question before confirmation,
 so that no worker discovers it halfway through a batch.
+
+A check whose harness does not exist yet proves nothing on the baseline: a stub that exits
+nonzero with "not implemented" looks red, but it says nothing about whether the real path
+can run. For such a check, list every external dependency the real path will need (data
+sources, services, credentials, permissions, files outside the repository) and confirm,
+read-only, that each is reachable from the verification environment the check records. A
+dependency it cannot reach is a defect of the draft: ask before confirmation.
+
+Give every `post_deploy` criterion a readiness note in the spec, written before
+confirmation, that answers four questions:
+
+- **Input**: what gives the check something to process, and how is that input produced?
+- **Bounds**: how is the run limited to the intended sample or scope?
+- **Access**: which roles, permissions, or environment changes does it need, and who can
+  grant them?
+- **Rollback**: how are the change and its data undone?
+
+Confirm read-only whatever can be confirmed that way, such as that a named resource exists
+or that a role is held. An answer you cannot get is a question for the user, not a blank.
 
 ### Keep the contract separate from its history
 
@@ -242,7 +265,7 @@ the draft, dispatch **one fresh subagent** that did not author the spec (use the
 agent must be distinct from every design partner used during the interview. Give it the
 draft, the enumerated decision surface with each decision's
 disposition and grounding, `references/requirement-quality.md`, and read access to the
-code. Its brief is three questions:
+code. Its brief is four questions:
 
 1. Is each decision's grounding real — did the user actually say or choose it, or
    was it rubber-stamped as "grounded" without evidence in the dialogue?
@@ -252,6 +275,9 @@ code. Its brief is three questions:
    outcomes or leave its threshold open, in a way that would let two readers build or
    judge different behavior? Report only what changes a decision or a check, not
    wording taste.
+4. Does every mandatory statement in Scope, Target behavior, and Constraints have an
+   acceptance criterion whose check would fail if the statement were not implemented, or
+   a stated reason why it has none? List each statement without one.
 
 Every finding is relayed to the user as a question (EXTRACT or PRESENT — never
 silently patched into the draft). Close the findings, re-check once; a surviving
